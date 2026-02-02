@@ -14,12 +14,23 @@ from scrapy.utils.project import get_project_settings
 class M3U8FilePipeline(FilesPipeline):
     """M3U8文件下载管道"""
 
-    def __init__(self, store_uri, download_func=None, settings=None):
-        super().__init__(store_uri, download_func, settings)
+    def __init__(self, store_uri, download_func=None, settings=None, crawler=None):
+        # 兼容新旧版本的FilesPipeline
+        if crawler is not None:
+            super().__init__(store_uri, crawler=crawler)
+        else:
+            super().__init__(store_uri, download_func, settings)
         self.download_directory = None
 
     @classmethod
+    def from_crawler(cls, crawler):
+        """从crawler创建pipeline实例"""
+        store_uri = crawler.settings.get('FILES_STORE', 'downloads')
+        return cls(store_uri=store_uri, crawler=crawler)
+
+    @classmethod
     def from_settings(cls, settings):
+        """从settings创建pipeline实例（兼容旧版本）"""
         store_uri = settings.get('FILES_STORE', 'downloads')
         return cls(store_uri=store_uri, settings=settings)
 
