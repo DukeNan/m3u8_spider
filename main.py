@@ -32,6 +32,9 @@ INVALID_FILENAME_CHARS: str = '<>:"/\\|?*'
 DEFAULT_CONCURRENT: int = 32
 DEFAULT_DELAY: float = 0.0
 
+# 默认下载输出基目录（项目根下的 movies/）
+DEFAULT_BASE_DIR: str = "movies"
+
 
 @dataclass(frozen=True)
 class DownloadConfig:
@@ -69,8 +72,8 @@ class DownloadConfig:
 
     @property
     def download_dir(self) -> Path:
-        """下载输出目录路径"""
-        return self.project_root / self.sanitized_filename
+        """下载输出目录路径（默认在 movies/ 下）"""
+        return self.project_root / DEFAULT_BASE_DIR / self.sanitized_filename
 
 
 class M3U8DownloadRunner:
@@ -97,6 +100,8 @@ class M3U8DownloadRunner:
 
     def _start_crawler(self) -> None:
         """获取 Scrapy 设置、更新参数、创建进程并启动爬虫"""
+        self._config.download_dir.parent.mkdir(parents=True, exist_ok=True)
+
         settings = get_project_settings()
         settings.set("CONCURRENT_REQUESTS", self._config.concurrent)
         settings.set("DOWNLOAD_DELAY", self._config.delay)
@@ -106,6 +111,7 @@ class M3U8DownloadRunner:
             M3U8DownloaderSpider,
             m3u8_url=self._config.m3u8_url,
             filename=self._config.sanitized_filename,
+            download_directory=str(self._config.download_dir),
             retry_urls=self._config.retry_urls,
         )
         process.start()
@@ -156,7 +162,10 @@ class DownloadApp:
             """,
         )
         parser.add_argument("m3u8_url", help="M3U8文件的URL地址")
-        parser.add_argument("filename", help="保存的文件名（将创建同名目录）")
+        parser.add_argument(
+            "filename",
+            help="保存的文件名（将在默认 movies/ 目录下创建同名子目录）",
+        )
         parser.add_argument(
             "--concurrent",
             type=int,
@@ -178,7 +187,7 @@ class DownloadApp:
         print("M3U8下载工具")
         print(sep)
         print(f"M3U8 URL: {config.m3u8_url}")
-        print(f"保存目录: {config.sanitized_filename}")
+        print(f"保存目录: {DEFAULT_BASE_DIR}/{config.sanitized_filename}")
         print(f"并发数: {config.concurrent}")
         print(f"下载延迟: {config.delay}秒")
         print(f"{sep}\n")

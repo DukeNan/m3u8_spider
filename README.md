@@ -30,6 +30,8 @@ uv pip install -e .
 
 ## 使用方法
 
+默认所有下载会保存到项目根目录下的 **`movies/`** 中；合并后的 MP4 默认保存到 **`mp4/`** 目录。校验与合并时，若只传入视频名（如 `my_video`），会自动解析为 `movies/my_video`；传入完整路径或相对路径（如 `./my_video`）则按原路径处理。
+
 ### 1. 下载 M3U8 文件
 
 ```bash
@@ -38,12 +40,13 @@ python main.py <m3u8_url> <filename>
 
 参数说明：
 - `m3u8_url`: M3U8 文件的 URL 地址
-- `filename`: 保存的文件名（将创建同名目录）
+- `filename`: 保存的文件名（将在 `movies/` 下创建同名子目录）
 
 示例：
 ```bash
 python main.py https://example.com/playlist.m3u8 my_video
 ```
+下载完成后文件位于 `movies/my_video/`。
 
 可选参数：
 - `--concurrent <num>`: 并发下载数（默认: 32）
@@ -59,8 +62,10 @@ python main.py https://example.com/playlist.m3u8 my_video --concurrent 16 --dela
 下载完成后，使用校验脚本检查文件是否完整：
 
 ```bash
-python validate_downloads.py <directory>
+python validate_downloads.py <目录路径或视频名>
 ```
+
+传入视频名（如 `my_video`）时，默认校验 `movies/my_video`。也可传入完整或相对路径。
 
 示例：
 ```bash
@@ -77,8 +82,10 @@ python validate_downloads.py my_video
 使用 FFmpeg 将下载的 TS 文件合并为 MP4：
 
 ```bash
-python merge_to_mp4.py <directory> [output.mp4]
+python merge_to_mp4.py <目录路径或视频名> [output.mp4]
 ```
+
+传入视频名（如 `my_video`）时，默认从 `movies/my_video` 合并；合成后的 MP4 默认保存到 **`mp4/`** 目录（如 `mp4/my_video.mp4`）。也可传入完整或相对路径。
 
 示例：
 ```bash
