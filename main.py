@@ -7,7 +7,6 @@ M3U8下载工具主入口
 from __future__ import annotations
 
 import argparse
-import logging
 import os  # 仅用于 os.chdir（pathlib 无等价 API）
 import sys
 from dataclasses import dataclass
@@ -109,17 +108,13 @@ class M3U8DownloadRunner:
         log_dir = self._config.project_root / LOGS_DIR
         log_dir.mkdir(parents=True, exist_ok=True)
         log_file = log_dir / f"{self._config.sanitized_filename}.log"
-        file_handler = logging.FileHandler(log_file, encoding="utf-8")
-        file_handler.setLevel(logging.DEBUG)
-        file_handler.setFormatter(
-            logging.Formatter("%(asctime)s [%(name)s] %(levelname)s: %(message)s")
-        )
-        scrapy_logger = logging.getLogger("scrapy")
-        scrapy_logger.addHandler(file_handler)
 
         settings = get_project_settings()
         settings.set("CONCURRENT_REQUESTS", self._config.concurrent)
         settings.set("DOWNLOAD_DELAY", self._config.delay)
+        # 使用 Scrapy 的 LOG_FILE/LOG_LEVEL，否则 configure_logging() 会覆盖手动添加的 handler，控制台日志不会写入文件
+        settings.set("LOG_FILE", str(log_file))
+        settings.set("LOG_LEVEL", "DEBUG")
 
         process = CrawlerProcess(settings)
         process.crawl(
