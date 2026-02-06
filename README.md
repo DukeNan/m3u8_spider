@@ -47,7 +47,7 @@ python main.py <m3u8_url> <filename>
 ```bash
 python main.py https://example.com/playlist.m3u8 my_video
 ```
-下载完成后文件位于 `movies/my_video/`。
+下载完成后文件位于 `movies/my_video/`；日志同时输出到控制台和 `logs/my_video.log`。
 
 可选参数：
 - `--concurrent <num>`: 并发下载数（默认: 32）
