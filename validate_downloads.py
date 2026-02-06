@@ -134,11 +134,6 @@ def validate_downloads(directory: str) -> Tuple[bool, Dict]:
     # 加载Content-Length信息
     content_lengths = load_content_lengths(directory)
 
-    print(f"\n{'=' * 60}")
-    print(f"校验目录: {directory}")
-    print(f"{'=' * 60}")
-    print(f"预期文件数量: {expected_count}")
-
     # 获取目录中所有.ts文件
     ts_files = []
     for file in os.listdir(directory):
@@ -148,7 +143,6 @@ def validate_downloads(directory: str) -> Tuple[bool, Dict]:
                 ts_files.append(file)
 
     actual_count = len(ts_files)
-    print(f"实际文件数量: {actual_count}")
 
     # 统计文件大小
     total_size = 0
@@ -159,66 +153,29 @@ def validate_downloads(directory: str) -> Tuple[bool, Dict]:
         file_sizes[file] = size
         total_size += size
 
-    print(f"总文件大小: {format_size(total_size)}")
-    print(f"{'=' * 60}\n")
-
     # 检查文件数量
     missing_files = []
-    if actual_count < expected_count:
-        print(f"⚠️  警告: 文件数量不匹配！缺少 {expected_count - actual_count} 个文件")
-
-        # 找出缺失的文件
-        expected_filenames = {seg["expected_filename"] for seg in expected_segments}
-        actual_filenames = set(ts_files)
-        missing_files = list(expected_filenames - actual_filenames)
-
-        if missing_files:
-            print("\n缺失的文件:")
-            for filename in sorted(missing_files):
-                print(f"  - {filename}")
-    elif actual_count > expected_count:
-        print(f"⚠️  警告: 实际文件数量 ({actual_count}) 多于预期 ({expected_count})")
-    else:
-        print("✅ 文件数量匹配")
+    expected_filenames = {seg["expected_filename"] for seg in expected_segments}
+    actual_filenames = set(ts_files)
+    missing_files = list(expected_filenames - actual_filenames)
 
     # 检查文件大小
-    print("\n文件完整性检查:")
     zero_size_files = []
     incomplete_files = []
 
     for file in sorted(ts_files):
         filepath = os.path.join(directory, file)
         size = file_sizes[file]
-        issues = []
 
         # 检查空文件
         if size == 0:
             zero_size_files.append(file)
-            issues.append("空文件")
         else:
             # 检查Content-Length
             if file in content_lengths:
                 expected_length = content_lengths[file]
                 if not validate_content_length(filepath, expected_length):
                     incomplete_files.append(file)
-                    issues.append(
-                        f"不完整(实际: {format_size(size)}, 预期: {format_size(expected_length)})"
-                    )
-
-        # 打印文件状态
-        if issues:
-            print(f"  ⚠️  {file}: {format_size(size)} - {', '.join(issues)}")
-        else:
-            print(f"  ✓  {file}: {format_size(size)}")
-
-    # 显示各类问题统计
-    if zero_size_files:
-        print(f"\n⚠️  警告: 发现 {len(zero_size_files)} 个空文件!")
-
-    if incomplete_files:
-        print(f"⚠️  警告: 发现 {len(incomplete_files)} 个不完整文件:")
-        for filename in sorted(incomplete_files):
-            print(f"  - {filename}")
 
     # 收集所有失败的文件（用于获取URL）
     failed_files_set = (
@@ -253,16 +210,30 @@ def validate_downloads(directory: str) -> Tuple[bool, Dict]:
         and (len(incomplete_files) == 0),
     }
 
-    print(f"\n{'=' * 60}")
+    # 显示统计信息
+    print(f"\n文件统计:")
+    print(f"  预期文件数量: {expected_count}")
+    print(f"  实际文件数量: {actual_count}")
+
     if result["is_complete"]:
-        print("✅ 校验通过: 所有文件已完整下载")
+        print(f"\n✅ 校验通过: 所有文件已完整下载")
     else:
         total_failed = len(failed_files_set)
-        print(f"❌ 校验失败: 发现 {total_failed} 个失败文件")
-        print(f"   - 缺失: {len(missing_files)} 个")
-        print(f"   - 空文件: {len(zero_size_files)} 个")
-        print(f"   - 不完整: {len(incomplete_files)} 个")
-    print(f"{'=' * 60}\n")
+        print(f"\n❌ 校验失败: 发现 {total_failed} 个失败文件")
+        print(f"  失败文件类型统计:")
+        print(f"    - 缺失: {len(missing_files)} 个")
+        print(f"    - 空文件: {len(zero_size_files)} 个")
+        print(f"    - 不完整: {len(incomplete_files)} 个")
+
+        # 显示前十个失败的文件名
+        failed_files_sorted = sorted(list(failed_files_set))
+        if failed_files_sorted:
+            print(f"\n  前十个失败的文件名:")
+            for i, filename in enumerate(failed_files_sorted[:10], 1):
+                print(f"    {i}. {filename}")
+            if len(failed_files_sorted) > 10:
+                print(f"    ... 还有 {len(failed_files_sorted) - 10} 个失败文件")
+    print()
 
     return result["is_complete"], result
 
