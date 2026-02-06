@@ -156,6 +156,12 @@ $RECYCLE.BIN/
 .Trash-*
 
 # Project specific
+# Default download output directory
+movies/
+
+# Default merged MP4 output directory
+mp4/
+
 # Downloaded video directories (created per filename parameter)
 # Note: don't ignore all directories directly, just ignore common video file extensions
 *.ts

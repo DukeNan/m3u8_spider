@@ -13,6 +13,25 @@ from pathlib import Path
 
 
 # ---------------------------------------------------------------------------
+# 常量
+# ---------------------------------------------------------------------------
+
+DEFAULT_BASE_DIR = "movies"
+
+
+def _resolve_directory(arg: str) -> str:
+    """
+    解析目录参数：绝对路径或含路径分隔符时原样使用，否则视为视频名，解析为 movies/<name>。
+    """
+    if Path(arg).is_absolute():
+        return arg
+    if "/" in arg or "\\" in arg:
+        return arg
+    project_root = Path(__file__).resolve().parent
+    return str(project_root / DEFAULT_BASE_DIR / arg)
+
+
+# ---------------------------------------------------------------------------
 # 数据模型
 # ---------------------------------------------------------------------------
 
@@ -366,11 +385,12 @@ def validate_downloads(directory: str) -> tuple[bool, dict]:
 def main() -> None:
     """主函数"""
     if len(sys.argv) < 2:
-        print("用法: python validate_downloads.py <目录路径>")
-        print("示例: python validate_downloads.py ./my_video")
+        print("用法: python validate_downloads.py <目录路径或视频名>")
+        print("示例: python validate_downloads.py my_video   # 默认校验 movies/my_video")
+        print("      python validate_downloads.py ./my_video")
         sys.exit(1)
 
-    directory = sys.argv[1]
+    directory = _resolve_directory(sys.argv[1])
     is_complete, _result = validate_downloads(directory)
     sys.exit(0 if is_complete else 1)
 

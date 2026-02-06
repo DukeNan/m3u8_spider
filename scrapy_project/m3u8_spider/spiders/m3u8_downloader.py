@@ -206,6 +206,7 @@ class M3U8DownloaderSpider(scrapy.Spider):
         self,
         m3u8_url: str | None = None,
         filename: str | None = None,
+        download_directory: str | None = None,
         retry_urls: list[dict] | None = None,
         *args,
         **kwargs,
@@ -220,9 +221,11 @@ class M3U8DownloaderSpider(scrapy.Spider):
         self._filename = filename
         self._retry_urls = retry_urls  # 重试模式：仅下载指定 URL 列表
 
-        # 创建下载目录（相对于项目根目录；项目根 = scrapy_project 的父目录）
-        project_root = self._project_root()
-        self.download_directory = str(Path(project_root) / filename)
+        if download_directory:
+            self.download_directory = download_directory
+        else:
+            project_root = self._project_root()
+            self.download_directory = str(Path(project_root) / filename)
         Path(self.download_directory).mkdir(parents=True, exist_ok=True)
 
         parsed = urlparse(m3u8_url)
