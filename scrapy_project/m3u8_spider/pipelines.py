@@ -5,11 +5,9 @@
 
 import os
 import json
-from pathlib import Path
 from urllib.parse import urlparse
 from scrapy import Request
 from scrapy.pipelines.files import FilesPipeline
-from scrapy.utils.project import get_project_settings
 
 
 class M3U8FilePipeline(FilesPipeline):
@@ -101,10 +99,6 @@ class M3U8FilePipeline(FilesPipeline):
 
                 # 从result中获取Content-Length（如果可用）
                 # result包含 {'url', 'path', 'checksum', 'status'}
-                # 我们需要从下载请求中获取response headers
-                filename = item.get('filename', file_path)
-
-                # 尝试从response中获取Content-Length
                 # 注意：FilesPipeline不直接提供response对象，我们需要从其他地方获取
                 # 我们可以在media_downloaded中获取
 
