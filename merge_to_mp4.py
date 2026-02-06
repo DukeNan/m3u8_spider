@@ -7,11 +7,11 @@ M3U8 TS文件合并脚本
 from __future__ import annotations
 
 import json
-import os
 import re
 import subprocess
 import sys
 from dataclasses import dataclass
+from pathlib import Path
 
 
 # ---------------------------------------------------------------------------
@@ -44,8 +44,8 @@ class EncryptionInfo:
         Returns:
             加密信息；若文件不存在或解析失败则返回 None
         """
-        path = os.path.join(directory, ENCRYPTION_INFO_NAME)
-        if not os.path.exists(path):
+        path = Path(directory) / ENCRYPTION_INFO_NAME
+        if not path.exists():
             return None
         try:
             with open(path, "r", encoding="utf-8") as f:
@@ -93,7 +93,7 @@ class FFmpegChecker:
 
 def _ts_sort_key(filepath: str) -> int | str:
     """排序键：优先按文件名中的数字，否则按文件名"""
-    filename = os.path.basename(filepath)
+    filename = Path(filepath).name
     numbers = re.findall(r"\d+", filename)
     if numbers:
         return int(numbers[0])
@@ -106,16 +106,15 @@ class TSFileCollector:
     @staticmethod
     def collect(directory: str) -> list[str]:
         """获取目录中所有 ts 文件（绝对路径），按文件名数字排序"""
-        if not os.path.isdir(directory):
+        dir_path = Path(directory)
+        if not dir_path.is_dir():
             print(f"错误: 目录不存在: {directory}")
             return []
 
         paths = []
-        for name in os.listdir(directory):
-            if name.endswith(".ts"):
-                path = os.path.join(directory, name)
-                if os.path.isfile(path):
-                    paths.append(path)
+        for p in dir_path.iterdir():
+            if p.suffix == ".ts" and p.is_file():
+                paths.append(str(p))
         paths.sort(key=_ts_sort_key)
         return paths
 
@@ -141,15 +140,15 @@ def _create_temp_m3u8(
     Returns:
         临时 m3u8 文件路径
     """
-    path = os.path.join(directory, TEMP_PLAYLIST_NAME)
+    path = Path(directory) / TEMP_PLAYLIST_NAME
     with open(path, "w", encoding="utf-8") as f:
         f.write("#EXTM3U\n")
         f.write("#EXT-X-VERSION:3\n")
         f.write("#EXT-X-TARGETDURATION:10\n")
 
         if encryption_info and encryption_info.is_encrypted:
-            key_path = os.path.join(directory, encryption_info.key_file)
-            key_uri = f"file://{os.path.abspath(key_path)}"
+            key_path = Path(directory) / encryption_info.key_file
+            key_uri = f"file://{key_path.resolve()}"
             key_line = f'#EXT-X-KEY:METHOD={encryption_info.method},URI="{key_uri}"'
             if encryption_info.iv:
                 key_line += f',IV={encryption_info.iv}'
@@ -157,20 +156,20 @@ def _create_temp_m3u8(
 
         for ts_file in ts_files:
             f.write("#EXTINF:10.0,\n")
-            f.write(f"{os.path.abspath(ts_file)}\n")
+            f.write(f"{Path(ts_file).resolve()}\n")
         f.write("#EXT-X-ENDLIST\n")
-    return path
+    return str(path)
 
 
 def _create_file_list(ts_files: list[str], list_filename: str) -> str:
     """创建 ffmpeg concat 文件列表"""
-    list_path = os.path.join(os.path.dirname(ts_files[0]), list_filename)
+    list_path = Path(ts_files[0]).parent / list_filename
     with open(list_path, "w", encoding="utf-8") as f:
         for ts_file in ts_files:
-            abs_path = os.path.abspath(ts_file)
+            abs_path = str(Path(ts_file).resolve())
             abs_path = abs_path.replace("'", "'\\''")
             f.write(f"file '{abs_path}'\n")
-    return list_path
+    return str(list_path)
 
 
 # ---------------------------------------------------------------------------
@@ -185,7 +184,7 @@ class MP4Merger:
     """
 
     def __init__(self, directory: str, output_file: str | None = None) -> None:
-        self._directory = os.path.abspath(directory)
+        self._directory = str(Path(directory).resolve())
         self._output_file = output_file
 
     def run(self) -> bool:
@@ -235,7 +234,7 @@ class MP4Merger:
             return False
 
     def _ensure_directory(self) -> bool:
-        if not os.path.isdir(self._directory):
+        if not Path(self._directory).is_dir():
             print(f"错误: 目录不存在: {self._directory}")
             return False
         return True
@@ -247,8 +246,8 @@ class MP4Merger:
         return True
 
     def _check_encryption_key(self, encryption: EncryptionInfo) -> bool:
-        key_path = os.path.join(self._directory, encryption.key_file)
-        if not os.path.exists(key_path):
+        key_path = Path(self._directory) / encryption.key_file
+        if not key_path.exists():
             print(f"错误: 密钥文件不存在: {key_path}")
             print("提示: 请确保在下载时已正确下载密钥文件")
             return False
@@ -268,14 +267,14 @@ class MP4Merger:
 
     def _resolve_output_path(self) -> str:
         if not self._output_file:
-            dir_name = os.path.basename(self._directory.rstrip("/"))
-            return os.path.join(self._directory, f"{dir_name}.mp4")
-        if os.path.isabs(self._output_file):
+            dir_name = Path(self._directory.rstrip("/")).name
+            return str(Path(self._directory) / f"{dir_name}.mp4")
+        if Path(self._output_file).is_absolute():
             return self._output_file
-        return os.path.join(self._directory, self._output_file)
+        return str(Path(self._directory) / self._output_file)
 
     def _confirm_overwrite(self, output_path: str) -> bool:
-        if not os.path.exists(output_path):
+        if not Path(output_path).exists():
             return True
         response = input(f"输出文件已存在: {output_path}\n是否覆盖? (y/n): ")
         if response.lower() != "y":
@@ -332,14 +331,16 @@ class MP4Merger:
     @staticmethod
     def _cleanup(paths: list[str]) -> None:
         for path in paths:
-            if os.path.exists(path):
-                os.remove(path)
+            p = Path(path)
+            if p.exists():
+                p.unlink()
 
     def _print_success(self, output_path: str) -> bool:
-        if not os.path.exists(output_path):
+        path = Path(output_path)
+        if not path.exists():
             print("错误: 合并完成但输出文件不存在")
             return False
-        file_size = os.path.getsize(output_path)
+        file_size = path.stat().st_size
         size_mb = file_size / (1024 * 1024)
         sep = "=" * 60
         print(f"\n{sep}")
