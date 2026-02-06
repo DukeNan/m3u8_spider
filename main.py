@@ -88,16 +88,7 @@ def retry_failed_downloads(directory, failed_urls, m3u8_url, filename, concurren
         print(f"第 {retry_count} 次重试")
         print(f"{'='*60}")
         print(f"需要重试的文件数量: {len(remaining_failures)}")
-
-        # 删除失败的文件
-        for fname in remaining_failures.keys():
-            filepath = os.path.join(directory, fname)
-            if os.path.exists(filepath):
-                try:
-                    os.remove(filepath)
-                    print(f"已删除损坏文件: {fname}")
-                except Exception as e:
-                    print(f"无法删除文件 {fname}: {e}")
+        print(f"注意: 损坏的文件将被重新下载覆盖")
 
         # 构建重试URL列表
         retry_urls = []
