@@ -156,21 +156,24 @@ $RECYCLE.BIN/
 .Trash-*
 
 # Project specific
-# 用户下载的视频文件目录（根据filename参数创建）
-# 注意：这里不直接忽略所有目录，而是忽略常见的视频文件扩展名
+# Downloaded video directories (created per filename parameter)
+# Note: don't ignore all directories directly, just ignore common video file extensions
 *.ts
 *.mp4
 *.m3u8
 *.m3u
 
-# 临时文件
+# Temporary files
 file_list.txt
 *.tmp
 *.temp
 
-# 日志文件
+# Log files
 *.log
 logs/
 
-# 下载的playlist文件（用户数据）
+# Downloaded playlist files (user data)
 playlist.txt
+
+# Claude Code
+.claude/
