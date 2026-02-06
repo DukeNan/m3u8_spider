@@ -91,3 +91,6 @@ FEED_EXPORT_ENCODING = "utf-8"
 
 # Files store directory (will be overridden by pipeline)
 FILES_STORE = "downloads"
+
+# 使用自定义 LogFormatter，配合 spider.log_pipeline_items 控制是否打印 pipeline item 日志
+LOG_FORMATTER = "m3u8_spider.logformatter.M3U8LogFormatter"
