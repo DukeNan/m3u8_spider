@@ -211,16 +211,16 @@ def validate_downloads(directory: str) -> Tuple[bool, Dict]:
     }
 
     # 显示统计信息
-    print(f"\n文件统计:")
+    print("\n文件统计:")
     print(f"  预期文件数量: {expected_count}")
     print(f"  实际文件数量: {actual_count}")
 
     if result["is_complete"]:
-        print(f"\n✅ 校验通过: 所有文件已完整下载")
+        print("\n✅ 校验通过: 所有文件已完整下载")
     else:
         total_failed = len(failed_files_set)
         print(f"\n❌ 校验失败: 发现 {total_failed} 个失败文件")
-        print(f"  失败文件类型统计:")
+        print("  失败文件类型统计:")
         print(f"    - 缺失: {len(missing_files)} 个")
         print(f"    - 空文件: {len(zero_size_files)} 个")
         print(f"    - 不完整: {len(incomplete_files)} 个")
@@ -228,7 +228,7 @@ def validate_downloads(directory: str) -> Tuple[bool, Dict]:
         # 显示前十个失败的文件名
         failed_files_sorted = sorted(list(failed_files_set))
         if failed_files_sorted:
-            print(f"\n  前十个失败的文件名:")
+            print("\n  前十个失败的文件名:")
             for i, filename in enumerate(failed_files_sorted[:10], 1):
                 print(f"    {i}. {filename}")
             if len(failed_files_sorted) > 10:

@@ -1,4 +1,6 @@
 import os
+import json
+import re
 from urllib.parse import urljoin, urlparse
 import scrapy
 import m3u8
@@ -78,6 +80,47 @@ class M3U8DownloaderSpider(scrapy.Spider):
             # 使用m3u8库解析
             playlist = m3u8.loads(response.text, uri=self.m3u8_url)
 
+            # 检测加密
+            encryption_info = self._detect_encryption(response.text, playlist)
+
+            # 保存加密信息
+            encryption_info_path = os.path.join(
+                self.download_directory, "encryption_info.json"
+            )
+            with open(encryption_info_path, "w", encoding="utf-8") as f:
+                json.dump(encryption_info, f, indent=2, ensure_ascii=False)
+
+            # 输出加密状态
+            if encryption_info["is_encrypted"]:
+                self.logger.info(
+                    f"⚠️  检测到加密: {encryption_info['method']}, "
+                    f"密钥URI: {encryption_info['key_uri']}"
+                )
+
+                # 下载密钥文件
+                if encryption_info["key_uri"]:
+                    key_url = encryption_info["key_uri"]
+                    # 处理相对URL
+                    if not key_url.startswith("http"):
+                        if key_url.startswith("/"):
+                            key_url = urljoin(self.base_url, key_url)
+                        else:
+                            base_dir = os.path.dirname(urlparse(self.m3u8_url).path)
+                            if base_dir:
+                                key_url = urljoin(f"{self.base_url}{base_dir}/", key_url)
+                            else:
+                                key_url = urljoin(f"{self.base_url}/", key_url)
+
+                    self.logger.info(f"正在下载密钥文件: {key_url}")
+                    # 下载密钥文件
+                    yield Request(
+                        url=key_url,
+                        callback=self._save_encryption_key,
+                        dont_filter=True,
+                    )
+            else:
+                self.logger.info("✅ 未检测到加密，m3u8文件为非加密格式")
+
             # 获取所有片段
             segments = playlist.segments
             self.logger.info(f"找到 {len(segments)} 个视频片段")
@@ -118,10 +161,135 @@ class M3U8DownloaderSpider(scrapy.Spider):
         except Exception as e:
             self.logger.error(f"解析M3U8文件失败: {e}")
             # 如果m3u8库解析失败，尝试手动解析
-            self._parse_m3u8_manual(response.text)
+            for item in self._parse_m3u8_manual(response.text):
+                yield item
+
+    def _save_encryption_key(self, response):
+        """保存加密密钥文件"""
+        key_path = os.path.join(self.download_directory, "encryption.key")
+        with open(key_path, "wb") as f:
+            f.write(response.body)
+        self.logger.info(f"密钥文件已保存到: {key_path}")
+
+    def _detect_encryption(self, m3u8_content, playlist=None):
+        """
+        检测m3u8文件是否加密
+
+        Args:
+            m3u8_content: m3u8文件内容（字符串）
+            playlist: m3u8库解析的playlist对象（可选）
+
+        Returns:
+            dict: 加密信息字典
+        """
+        encryption_info = {
+            "is_encrypted": False,
+            "method": None,
+            "key_uri": None,
+            "key_file": "encryption.key",
+            "iv": None,
+            "keyformat": None,
+            "keyformatversions": None,
+        }
+
+        # 方法1: 使用m3u8库的keys属性
+        if playlist and hasattr(playlist, "keys") and playlist.keys:
+            for key in playlist.keys:
+                if key and key.method and key.method.upper() != "NONE":
+                    encryption_info["is_encrypted"] = True
+                    encryption_info["method"] = key.method
+                    encryption_info["key_uri"] = key.uri
+                    encryption_info["iv"] = key.iv
+                    encryption_info["keyformat"] = key.keyformat
+                    encryption_info["keyformatversions"] = key.keyformatversions
+                    break  # 只取第一个加密密钥
+
+        # 方法2: 手动解析（备用方案）
+        if not encryption_info["is_encrypted"]:
+            # 查找 #EXT-X-KEY 标签
+            key_pattern = r'#EXT-X-KEY:(.+)'
+            key_matches = re.findall(key_pattern, m3u8_content)
+
+            for key_line in key_matches:
+                # 解析KEY属性
+                method_match = re.search(r'METHOD=([^,\s]+)', key_line)
+                if method_match:
+                    method = method_match.group(1).strip('"')
+                    if method.upper() != "NONE":
+                        encryption_info["is_encrypted"] = True
+                        encryption_info["method"] = method
+
+                        # 提取URI
+                        uri_match = re.search(r'URI="([^"]+)"', key_line)
+                        if uri_match:
+                            encryption_info["key_uri"] = uri_match.group(1)
+
+                        # 提取IV
+                        iv_match = re.search(r'IV=(0x[0-9A-Fa-f]+)', key_line)
+                        if iv_match:
+                            encryption_info["iv"] = iv_match.group(1)
+
+                        # 提取KEYFORMAT
+                        keyformat_match = re.search(r'KEYFORMAT="([^"]+)"', key_line)
+                        if keyformat_match:
+                            encryption_info["keyformat"] = keyformat_match.group(1)
+
+                        # 提取KEYFORMATVERSIONS
+                        keyformatversions_match = re.search(
+                            r'KEYFORMATVERSIONS="([^"]+)"', key_line
+                        )
+                        if keyformatversions_match:
+                            encryption_info["keyformatversions"] = (
+                                keyformatversions_match.group(1)
+                            )
+
+                        break  # 只取第一个加密密钥
+
+        return encryption_info
 
     def _parse_m3u8_manual(self, m3u8_content):
         """手动解析m3u8文件（备用方法）"""
+        # 检测加密（手动解析模式）
+        encryption_info = self._detect_encryption(m3u8_content, None)
+
+        # 保存加密信息
+        encryption_info_path = os.path.join(
+            self.download_directory, "encryption_info.json"
+        )
+        with open(encryption_info_path, "w", encoding="utf-8") as f:
+            json.dump(encryption_info, f, indent=2, ensure_ascii=False)
+
+        # 输出加密状态
+        if encryption_info["is_encrypted"]:
+            self.logger.info(
+                f"⚠️  检测到加密: {encryption_info['method']}, "
+                f"密钥URI: {encryption_info['key_uri']}"
+            )
+
+            # 下载密钥文件
+            if encryption_info["key_uri"]:
+                key_url = encryption_info["key_uri"]
+                # 处理相对URL
+                if not key_url.startswith("http"):
+                    if key_url.startswith("/"):
+                        key_url = urljoin(self.base_url, key_url)
+                    else:
+                        base_dir = os.path.dirname(urlparse(self.m3u8_url).path)
+                        if base_dir:
+                            key_url = urljoin(f"{self.base_url}{base_dir}/", key_url)
+                        else:
+                            key_url = urljoin(f"{self.base_url}/", key_url)
+
+                self.logger.info(f"正在下载密钥文件: {key_url}")
+                # 下载密钥文件
+                yield Request(
+                    url=key_url,
+                    callback=self._save_encryption_key,
+                    dont_filter=True,
+                )
+        else:
+            self.logger.info("✅ 未检测到加密，m3u8文件为非加密格式")
+
         lines = m3u8_content.strip().split("\n")
         segment_index = 0
 
