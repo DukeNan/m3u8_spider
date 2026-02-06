@@ -4,6 +4,7 @@
 # See: https://docs.scrapy.org/en/latest/topics/item-pipeline.html
 
 import os
+import json
 from pathlib import Path
 from urllib.parse import urlparse
 from scrapy import Request
@@ -21,6 +22,7 @@ class M3U8FilePipeline(FilesPipeline):
         else:
             super().__init__(store_uri, download_func, settings)
         self.download_directory = None
+        self.content_lengths = {}  # 存储文件名到Content-Length的映射
 
     @classmethod
     def from_crawler(cls, crawler):
@@ -44,6 +46,26 @@ class M3U8FilePipeline(FilesPipeline):
             os.makedirs(self.download_directory, exist_ok=True)
             # 设置store的basedir为下载目录
             self.store.basedir = self.download_directory
+
+            # 加载已有的Content-Length信息（如果存在）
+            content_lengths_file = os.path.join(self.download_directory, "content_lengths.json")
+            if os.path.exists(content_lengths_file):
+                try:
+                    with open(content_lengths_file, 'r', encoding='utf-8') as f:
+                        self.content_lengths = json.load(f)
+                except Exception:
+                    self.content_lengths = {}
+
+    def close_spider(self, spider):
+        """爬虫关闭时调用，保存Content-Length信息"""
+        if self.download_directory and self.content_lengths:
+            content_lengths_file = os.path.join(self.download_directory, "content_lengths.json")
+            try:
+                with open(content_lengths_file, 'w', encoding='utf-8') as f:
+                    json.dump(self.content_lengths, f, indent=2, ensure_ascii=False)
+            except Exception as e:
+                if hasattr(spider, 'logger'):
+                    spider.logger.warning(f"无法保存Content-Length信息: {e}")
 
     def file_path(self, request, response=None, info=None, *, item=None):
         """返回文件保存路径（相对路径）"""
@@ -77,6 +99,15 @@ class M3U8FilePipeline(FilesPipeline):
                 else:
                     full_path = file_path
 
+                # 从result中获取Content-Length（如果可用）
+                # result包含 {'url', 'path', 'checksum', 'status'}
+                # 我们需要从下载请求中获取response headers
+                filename = item.get('filename', file_path)
+
+                # 尝试从response中获取Content-Length
+                # 注意：FilesPipeline不直接提供response对象，我们需要从其他地方获取
+                # 我们可以在media_downloaded中获取
+
                 # 安全地设置字段（检查字段是否在item定义中）
                 if 'file_path' in item.fields:
                     item['file_path'] = full_path
@@ -88,3 +119,19 @@ class M3U8FilePipeline(FilesPipeline):
                 if 'file_error' in item.fields:
                     item['file_error'] = result
         return item
+
+    def media_downloaded(self, response, request, info, *, item=None):
+        """下载完成后调用，可以获取response headers"""
+        # 获取Content-Length
+        content_length = response.headers.get(b'Content-Length')
+        if content_length and item:
+            try:
+                length = int(content_length.decode('utf-8'))
+                filename = item.get('filename', '')
+                if filename:
+                    self.content_lengths[filename] = length
+            except Exception:
+                pass
+
+        # 调用父类方法继续处理
+        return super().media_downloaded(response, request, info, item=item)

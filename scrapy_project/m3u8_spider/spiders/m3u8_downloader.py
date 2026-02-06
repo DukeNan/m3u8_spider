@@ -15,7 +15,7 @@ class M3U8DownloaderSpider(scrapy.Spider):
     name = "m3u8_downloader"
     allowed_domains = []
 
-    def __init__(self, m3u8_url=None, filename=None, *args, **kwargs):
+    def __init__(self, m3u8_url=None, filename=None, retry_urls=None, *args, **kwargs):
         super(M3U8DownloaderSpider, self).__init__(*args, **kwargs)
         if not m3u8_url:
             raise ValueError("必须提供m3u8_url参数")
@@ -24,6 +24,8 @@ class M3U8DownloaderSpider(scrapy.Spider):
 
         self.m3u8_url = m3u8_url
         self.filename = filename
+        self.retry_urls = retry_urls  # 重试模式：仅下载指定URL列表
+
         # 创建下载目录（相对于项目根目录）
         # 获取项目根目录（scrapy_project的父目录）
         current_dir = os.getcwd()
@@ -39,16 +41,36 @@ class M3U8DownloaderSpider(scrapy.Spider):
         self.base_url = f"{parsed.scheme}://{parsed.netloc}"
         self.base_path = os.path.dirname(parsed.path) or ""
 
-        self.logger.info(f"M3U8 URL: {self.m3u8_url}")
+        if self.retry_urls:
+            self.logger.info(f"重试模式: 将重新下载 {len(self.retry_urls)} 个文件")
+        else:
+            self.logger.info(f"M3U8 URL: {self.m3u8_url}")
         self.logger.info(f"下载目录: {self.download_directory}")
 
     def start_requests(self):
         """开始请求，首先下载m3u8文件"""
-        yield Request(
-            url=self.m3u8_url,
-            callback=self.parse_m3u8,
-            dont_filter=True
-        )
+        # 如果是重试模式，直接下载指定的URL
+        if self.retry_urls:
+            for url_info in self.retry_urls:
+                url = url_info['url']
+                filename = url_info['filename']
+                index = url_info.get('index', 0)
+
+                # 创建item
+                item = M3U8Item()
+                item['url'] = url
+                item['filename'] = filename
+                item['directory'] = self.download_directory
+                item['segment_index'] = index
+
+                yield item
+        else:
+            # 正常模式，下载m3u8文件并解析
+            yield Request(
+                url=self.m3u8_url,
+                callback=self.parse_m3u8,
+                dont_filter=True
+            )
 
     def parse_m3u8(self, response):
         """解析m3u8文件"""
