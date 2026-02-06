@@ -98,22 +98,24 @@ python merge_to_mp4.py my_video output.mp4
 
 ```
 m3u8_spider/
-├── scrapy_project/          # Scrapy项目目录
+├── scrapy_project/          # Scrapy 项目目录
 │   ├── scrapy.cfg
-│   └── m3u8_spider/        # Scrapy项目包
+│   └── m3u8_spider/         # Scrapy 项目包
 │       ├── __init__.py
-│       ├── items.py        # 定义数据项
-│       ├── middlewares.py  # 中间件
-│       ├── pipelines.py    # 文件保存管道
-│       ├── settings.py     # Scrapy配置
-│       └── spiders/        # 爬虫目录
+│       ├── extensions.py    # 扩展（如 M3U8 文件日志）
+│       ├── items.py         # 数据项定义
+│       ├── logformatter.py  # 自定义日志格式
+│       ├── middlewares.py   # 中间件
+│       ├── pipelines.py     # 文件保存管道
+│       ├── settings.py      # Scrapy 配置
+│       └── spiders/         # 爬虫目录
 │           ├── __init__.py
-│           └── m3u8_downloader.py  # M3U8下载爬虫
-├── validate_downloads.py   # 校验脚本
-├── merge_to_mp4.py        # FFmpeg合并脚本
-├── main.py                 # 主入口
-├── pyproject.toml          # 项目配置和依赖
-└── README.md               # 使用说明
+│           └── m3u8_downloader.py  # M3U8 下载爬虫
+├── validate_downloads.py    # 校验脚本
+├── merge_to_mp4.py         # FFmpeg 合并脚本
+├── main.py                  # 主入口
+├── pyproject.toml           # 项目配置与依赖
+└── README.md                # 使用说明
 ```
 
 ## 目录结构
@@ -122,15 +124,18 @@ m3u8_spider/
 
 ```
 m3u8_spider/
-├── movies/              # 下载的视频片段目录（默认）
+├── movies/               # 下载的视频片段目录（默认）
 │   ├── my_video/         # 每个视频的片段文件
 │   │   ├── segment_00000.ts
 │   │   ├── segment_00001.ts
 │   │   ├── playlist.txt
 │   │   ├── content_lengths.json
-│   │   └── encryption_info.json (如加密)
+│   │   └── encryption_info.json  # 若存在加密
 │   └── another_video/
-└── mp4/                # 合并后的 MP4 目录（默认）
+├── logs/                 # 下载日志（默认）
+│   ├── my_video.log
+│   └── another_video.log
+└── mp4/                  # 合并后的 MP4 目录（默认）
     ├── my_video.mp4
     └── another_video.mp4
 ```
