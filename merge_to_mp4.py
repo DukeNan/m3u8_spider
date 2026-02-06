@@ -14,9 +14,7 @@ from typing import List, Optional
 def check_ffmpeg() -> bool:
     """检查ffmpeg是否安装"""
     try:
-        subprocess.run(['ffmpeg', '-version'],
-                      capture_output=True,
-                      check=True)
+        subprocess.run(["ffmpeg", "-version"], capture_output=True, check=True)
         return True
     except (subprocess.CalledProcessError, FileNotFoundError):
         return False
@@ -32,7 +30,7 @@ def get_ts_files(directory: str) -> List[str]:
 
     # 获取所有.ts文件
     for file in os.listdir(directory):
-        if file.endswith('.ts'):
+        if file.endswith(".ts"):
             filepath = os.path.join(directory, file)
             if os.path.isfile(filepath):
                 ts_files.append(filepath)
@@ -41,7 +39,7 @@ def get_ts_files(directory: str) -> List[str]:
     def sort_key(filepath):
         filename = os.path.basename(filepath)
         # 尝试提取文件名中的数字
-        numbers = re.findall(r'\d+', filename)
+        numbers = re.findall(r"\d+", filename)
         if numbers:
             return int(numbers[0])
         return filename
@@ -54,7 +52,7 @@ def create_file_list(ts_files: List[str], list_file: str) -> str:
     """创建ffmpeg文件列表"""
     list_path = os.path.join(os.path.dirname(ts_files[0]), list_file)
 
-    with open(list_path, 'w', encoding='utf-8') as f:
+    with open(list_path, "w", encoding="utf-8") as f:
         for ts_file in ts_files:
             # 使用绝对路径，并转义特殊字符
             abs_path = os.path.abspath(ts_file)
@@ -89,15 +87,15 @@ def merge_ts_files(directory: str, output_file: Optional[str] = None) -> bool:
         print(f"错误: 在目录 {directory} 中未找到.ts文件")
         return False
 
-    print(f"\n{'='*60}")
+    print(f"\n{'=' * 60}")
     print(f"合并目录: {directory}")
     print(f"找到 {len(ts_files)} 个TS文件")
-    print(f"{'='*60}\n")
+    print(f"{'=' * 60}\n")
 
     # 确定输出文件名
     if not output_file:
         # 使用目录名作为输出文件名
-        dir_name = os.path.basename(directory.rstrip('/'))
+        dir_name = os.path.basename(directory.rstrip("/"))
         output_file = os.path.join(directory, f"{dir_name}.mp4")
     else:
         # 如果输出文件不是绝对路径，则相对于目录
@@ -107,7 +105,7 @@ def merge_ts_files(directory: str, output_file: Optional[str] = None) -> bool:
     # 如果输出文件已存在，询问是否覆盖
     if os.path.exists(output_file):
         response = input(f"输出文件已存在: {output_file}\n是否覆盖? (y/n): ")
-        if response.lower() != 'y':
+        if response.lower() != "y":
             print("已取消操作")
             return False
 
@@ -121,25 +119,24 @@ def merge_ts_files(directory: str, output_file: Optional[str] = None) -> bool:
 
         # 构建ffmpeg命令
         cmd = [
-            'ffmpeg',
-            '-f', 'concat',
-            '-safe', '0',
-            '-i', list_file,
-            '-c', 'copy',  # 直接复制流，不重新编码（速度快）
-            '-y',  # 覆盖输出文件
-            output_file
+            "ffmpeg",
+            "-f",
+            "concat",
+            "-safe",
+            "0",
+            "-i",
+            list_file,
+            "-c",
+            "copy",  # 直接复制流，不重新编码（速度快）
+            "-y",  # 覆盖输出文件
+            output_file,
         ]
 
         print("\n开始合并...")
         print(f"命令: {' '.join(cmd)}\n")
 
         # 执行ffmpeg命令
-        result = subprocess.run(
-            cmd,
-            check=True,
-            capture_output=False,
-            text=True
-        )
+        result = subprocess.run(cmd, check=True, capture_output=False, text=True)
 
         # 清理临时文件列表
         if os.path.exists(list_file):
@@ -150,11 +147,11 @@ def merge_ts_files(directory: str, output_file: Optional[str] = None) -> bool:
             if os.path.exists(output_file):
                 file_size = os.path.getsize(output_file)
                 size_mb = file_size / (1024 * 1024)
-                print(f"\n{'='*60}")
+                print(f"\n{'=' * 60}")
                 print("✅ 合并成功!")
                 print(f"输出文件: {output_file}")
                 print(f"文件大小: {size_mb:.2f} MB")
-                print(f"{'='*60}\n")
+                print(f"{'=' * 60}\n")
                 return True
             else:
                 print("错误: 合并完成但输出文件不存在")

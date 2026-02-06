@@ -26,7 +26,7 @@ class M3U8DownloaderSpider(scrapy.Spider):
         # 创建下载目录（相对于项目根目录）
         # 获取项目根目录（scrapy_project的父目录）
         current_dir = os.getcwd()
-        if current_dir.endswith('scrapy_project'):
+        if current_dir.endswith("scrapy_project"):
             project_root = os.path.dirname(current_dir)
         else:
             project_root = current_dir
@@ -49,31 +49,27 @@ class M3U8DownloaderSpider(scrapy.Spider):
         # 如果是重试模式，直接下载指定的URL
         if self.retry_urls:
             for url_info in self.retry_urls:
-                url = url_info['url']
-                filename = url_info['filename']
-                index = url_info.get('index', 0)
+                url = url_info["url"]
+                filename = url_info["filename"]
+                index = url_info.get("index", 0)
 
                 # 创建item
                 item = M3U8Item()
-                item['url'] = url
-                item['filename'] = filename
-                item['directory'] = self.download_directory
-                item['segment_index'] = index
+                item["url"] = url
+                item["filename"] = filename
+                item["directory"] = self.download_directory
+                item["segment_index"] = index
 
                 yield item
         else:
             # 正常模式，下载m3u8文件并解析
-            yield Request(
-                url=self.m3u8_url,
-                callback=self.parse_m3u8,
-                dont_filter=True
-            )
+            yield Request(url=self.m3u8_url, callback=self.parse_m3u8, dont_filter=True)
 
     def parse_m3u8(self, response):
         """解析m3u8文件"""
         # 保存m3u8文件内容到playlist.txt
         playlist_path = os.path.join(self.download_directory, "playlist.txt")
-        with open(playlist_path, 'w', encoding='utf-8') as f:
+        with open(playlist_path, "w", encoding="utf-8") as f:
             f.write(response.text)
         self.logger.info(f"M3U8文件已保存到: {playlist_path}")
 
@@ -90,30 +86,32 @@ class M3U8DownloaderSpider(scrapy.Spider):
             for index, segment in enumerate(segments):
                 # 构建完整的URL
                 segment_url = segment.uri
-                if not segment_url.startswith('http'):
+                if not segment_url.startswith("http"):
                     # 相对URL，需要拼接
-                    if segment_url.startswith('/'):
+                    if segment_url.startswith("/"):
                         segment_url = urljoin(self.base_url, segment_url)
                     else:
                         # 相对于m3u8文件的路径
                         base_dir = os.path.dirname(urlparse(self.m3u8_url).path)
                         if base_dir:
-                            segment_url = urljoin(f"{self.base_url}{base_dir}/", segment_url)
+                            segment_url = urljoin(
+                                f"{self.base_url}{base_dir}/", segment_url
+                            )
                         else:
                             segment_url = urljoin(f"{self.base_url}/", segment_url)
 
                 # 生成文件名
                 segment_filename = os.path.basename(segment_url)
-                if not segment_filename or not segment_filename.endswith('.ts'):
+                if not segment_filename or not segment_filename.endswith(".ts"):
                     # 如果没有文件名或不是.ts，使用索引命名
                     segment_filename = f"segment_{index:05d}.ts"
 
                 # 创建item
                 item = M3U8Item()
-                item['url'] = segment_url
-                item['filename'] = segment_filename
-                item['directory'] = self.download_directory
-                item['segment_index'] = index
+                item["url"] = segment_url
+                item["filename"] = segment_filename
+                item["directory"] = self.download_directory
+                item["segment_index"] = index
 
                 yield item
 
@@ -124,40 +122,42 @@ class M3U8DownloaderSpider(scrapy.Spider):
 
     def _parse_m3u8_manual(self, m3u8_content):
         """手动解析m3u8文件（备用方法）"""
-        lines = m3u8_content.strip().split('\n')
+        lines = m3u8_content.strip().split("\n")
         segment_index = 0
 
         for line in lines:
             line = line.strip()
             # 跳过注释和空行
-            if not line or line.startswith('#'):
+            if not line or line.startswith("#"):
                 continue
 
             # 如果是URL
-            if line.startswith('http') or not line.startswith('#'):
+            if line.startswith("http") or not line.startswith("#"):
                 segment_url = line
-                if not segment_url.startswith('http'):
+                if not segment_url.startswith("http"):
                     # 相对URL
-                    if segment_url.startswith('/'):
+                    if segment_url.startswith("/"):
                         segment_url = urljoin(self.base_url, segment_url)
                     else:
                         base_dir = os.path.dirname(urlparse(self.m3u8_url).path)
                         if base_dir:
-                            segment_url = urljoin(f"{self.base_url}{base_dir}/", segment_url)
+                            segment_url = urljoin(
+                                f"{self.base_url}{base_dir}/", segment_url
+                            )
                         else:
                             segment_url = urljoin(f"{self.base_url}/", segment_url)
 
                 # 生成文件名
                 segment_filename = os.path.basename(segment_url)
-                if not segment_filename or not segment_filename.endswith('.ts'):
+                if not segment_filename or not segment_filename.endswith(".ts"):
                     segment_filename = f"segment_{segment_index:05d}.ts"
 
                 # 创建item
                 item = M3U8Item()
-                item['url'] = segment_url
-                item['filename'] = segment_filename
-                item['directory'] = self.download_directory
-                item['segment_index'] = segment_index
+                item["url"] = segment_url
+                item["filename"] = segment_filename
+                item["directory"] = self.download_directory
+                item["segment_index"] = segment_index
 
                 yield item
                 segment_index += 1
