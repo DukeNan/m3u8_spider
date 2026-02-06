@@ -1,10 +1,8 @@
 import os
-import re
 from pathlib import Path
 from urllib.parse import urljoin, urlparse
 import scrapy
 import m3u8
-import requests
 from scrapy.http import Request
 from m3u8_spider.items import M3U8Item
 
