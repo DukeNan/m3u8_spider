@@ -22,6 +22,20 @@ TEMP_PLAYLIST_NAME = "temp_playlist.m3u8"
 FILE_LIST_NAME = "file_list.txt"
 ENCRYPTION_INFO_NAME = "encryption_info.json"
 DEFAULT_KEY_FILE = "encryption.key"
+DEFAULT_BASE_DIR = "movies"
+DEFAULT_MP4_DIR = "mp4"
+
+
+def _resolve_directory(arg: str) -> str:
+    """
+    解析目录参数：绝对路径或含路径分隔符时原样使用，否则视为视频名，解析为 movies/<name>。
+    """
+    if Path(arg).is_absolute():
+        return arg
+    if "/" in arg or "\\" in arg:
+        return arg
+    project_root = Path(__file__).resolve().parent
+    return str(project_root / DEFAULT_BASE_DIR / arg)
 
 
 @dataclass
@@ -212,6 +226,7 @@ class MP4Merger:
         self._print_merge_header(ts_files)
 
         output_path = self._resolve_output_path()
+        Path(output_path).parent.mkdir(parents=True, exist_ok=True)
         if not self._confirm_overwrite(output_path):
             return False
         print(f"输出文件: {output_path}\n")
@@ -266,12 +281,14 @@ class MP4Merger:
         print(f"{sep}\n")
 
     def _resolve_output_path(self) -> str:
+        project_root = Path(__file__).resolve().parent
+        mp4_dir = project_root / DEFAULT_MP4_DIR
         if not self._output_file:
             dir_name = Path(self._directory.rstrip("/")).name
-            return str(Path(self._directory) / f"{dir_name}.mp4")
+            return str(mp4_dir / f"{dir_name}.mp4")
         if Path(self._output_file).is_absolute():
             return self._output_file
-        return str(Path(self._directory) / self._output_file)
+        return str(mp4_dir / Path(self._output_file).name)
 
     def _confirm_overwrite(self, output_path: str) -> bool:
         if not Path(output_path).exists():
@@ -364,12 +381,13 @@ def merge_ts_files(directory: str, output_file: str | None = None) -> bool:
 def main() -> None:
     """主函数"""
     if len(sys.argv) < 2:
-        print("用法: python merge_to_mp4.py <目录路径> [输出文件名]")
-        print("示例: python merge_to_mp4.py ./my_video")
-        print("示例: python merge_to_mp4.py ./my_video output.mp4")
+        print("用法: python merge_to_mp4.py <目录路径或视频名> [输出文件名]")
+        print("示例: python merge_to_mp4.py my_video           # 默认合并 movies/my_video，输出到 mp4/my_video.mp4")
+        print("      python merge_to_mp4.py my_video output.mp4  # 输出到 mp4/output.mp4")
+        print("      python merge_to_mp4.py ./my_video output.mp4")
         sys.exit(1)
 
-    directory = sys.argv[1]
+    directory = _resolve_directory(sys.argv[1])
     output_file = sys.argv[2] if len(sys.argv) > 2 else None
     success = merge_ts_files(directory, output_file)
     sys.exit(0 if success else 1)
