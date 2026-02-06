@@ -6,13 +6,14 @@
 
 - 使用 Scrapy 框架实现高效的并发下载
 - 自动解析 M3U8 文件并下载所有 TS 片段
-- 支持自定义文件名和目录管理
+- 默认下载到 `movies/` 目录，合并输出到 `mp4/` 目录
 - 提供文件校验脚本，检查下载完整性
+- 提供基于 pathlib 的现代化路径处理
 - 提供 FFmpeg 合并脚本，将 TS 文件合并为 MP4
 
 ## 环境要求
 
-- Python 3.14+
+- Python 3.10+
 - uv (虚拟环境管理工具)
 - ffmpeg (用于合并视频，可选)
 
@@ -115,10 +116,30 @@ m3u8_spider/
 └── README.md               # 使用说明
 ```
 
+## 目录结构
+
+下载和合并过程中会创建以下目录：
+
+```
+m3u8_spider/
+├── movies/              # 下载的视频片段目录（默认）
+│   ├── my_video/         # 每个视频的片段文件
+│   │   ├── segment_00000.ts
+│   │   ├── segment_00001.ts
+│   │   ├── playlist.txt
+│   │   ├── content_lengths.json
+│   │   └── encryption_info.json (如加密)
+│   └── another_video/
+└── mp4/                # 合并后的 MP4 目录（默认）
+    ├── my_video.mp4
+    └── another_video.mp4
+```
+
 ## 工作流程
 
 1. **下载阶段**：
    - 解析 M3U8 文件，提取所有 TS 片段 URL
+   - 在 `movies/` 下创建目录并保存文件
    - 将 M3U8 内容保存为 `playlist.txt`
    - 并发下载所有 TS 文件到指定目录
 
@@ -130,6 +151,7 @@ m3u8_spider/
 3. **合并阶段**：
    - 按顺序读取所有 TS 文件
    - 使用 FFmpeg 合并为单个 MP4 文件
+   - 输出到 `mp4/` 目录
 
 ## 注意事项
 
