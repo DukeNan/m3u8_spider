@@ -62,70 +62,6 @@ def format_size(size_bytes: int) -> str:
     return f"{size_bytes:.2f} TB"
 
 
-def validate_ts_file(filepath: str) -> bool:
-    """
-    校验TS文件格式
-
-    检查：
-    1. 同步字节（0x47）
-    2. 包大小（188字节）
-    3. 包结构完整性
-
-    Args:
-        filepath: TS文件路径
-
-    Returns:
-        bool: 文件格式是否有效
-    """
-    try:
-        file_size = os.path.getsize(filepath)
-
-        # 文件太小，直接标记为损坏
-        if file_size < 188:
-            return False
-
-        # 检查文件大小是否为188的倍数（允许有少量误差）
-        # 某些TS文件可能在最后有额外的数据
-        if file_size % 188 > 10:  # 允许最多10字节的误差
-            return False
-
-        # 读取文件前部分进行采样检查
-        with open(filepath, "rb") as f:
-            # 检查前5个包（如果有的话）
-            num_packets_to_check = min(5, file_size // 188)
-
-            for i in range(num_packets_to_check):
-                # 读取同步字节
-                f.seek(i * 188)
-                sync_byte = f.read(1)
-
-                # TS包的同步字节必须是0x47
-                if len(sync_byte) == 0 or sync_byte[0] != 0x47:
-                    return False
-
-            # 如果文件足够大，也检查中间和末尾的包
-            if file_size >= 188 * 100:
-                # 检查中间位置
-                mid_packet = (file_size // 188) // 2
-                f.seek(mid_packet * 188)
-                sync_byte = f.read(1)
-                if len(sync_byte) == 0 or sync_byte[0] != 0x47:
-                    return False
-
-                # 检查倒数第二个完整包
-                last_packet = (file_size // 188) - 2
-                f.seek(last_packet * 188)
-                sync_byte = f.read(1)
-                if len(sync_byte) == 0 or sync_byte[0] != 0x47:
-                    return False
-
-        return True
-
-    except Exception:
-        # 如果读取文件出错，认为文件损坏
-        return False
-
-
 def load_content_lengths(directory: str) -> Dict[str, int]:
     """
     加载Content-Length信息
@@ -245,10 +181,9 @@ def validate_downloads(directory: str) -> Tuple[bool, Dict]:
     else:
         print("✅ 文件数量匹配")
 
-    # 检查文件大小和格式
+    # 检查文件大小
     print("\n文件完整性检查:")
     zero_size_files = []
-    corrupted_files = []
     incomplete_files = []
 
     for file in sorted(ts_files):
@@ -261,11 +196,6 @@ def validate_downloads(directory: str) -> Tuple[bool, Dict]:
             zero_size_files.append(file)
             issues.append("空文件")
         else:
-            # 检查TS格式
-            if not validate_ts_file(filepath):
-                corrupted_files.append(file)
-                issues.append("格式损坏")
-
             # 检查Content-Length
             if file in content_lengths:
                 expected_length = content_lengths[file]
@@ -285,11 +215,6 @@ def validate_downloads(directory: str) -> Tuple[bool, Dict]:
     if zero_size_files:
         print(f"\n⚠️  警告: 发现 {len(zero_size_files)} 个空文件!")
 
-    if corrupted_files:
-        print(f"⚠️  警告: 发现 {len(corrupted_files)} 个损坏文件:")
-        for filename in sorted(corrupted_files):
-            print(f"  - {filename}")
-
     if incomplete_files:
         print(f"⚠️  警告: 发现 {len(incomplete_files)} 个不完整文件:")
         for filename in sorted(incomplete_files):
@@ -299,7 +224,6 @@ def validate_downloads(directory: str) -> Tuple[bool, Dict]:
     failed_files_set = (
         set(missing_files)
         | set(zero_size_files)
-        | set(corrupted_files)
         | set(incomplete_files)
     )
 
@@ -321,13 +245,11 @@ def validate_downloads(directory: str) -> Tuple[bool, Dict]:
         "total_size": total_size,
         "missing_files": missing_files,
         "zero_size_files": zero_size_files,
-        "corrupted_files": corrupted_files,
         "incomplete_files": incomplete_files,
         "failed_files": list(failed_files_set),
         "failed_urls": failed_urls,
         "is_complete": (actual_count == expected_count)
         and (len(zero_size_files) == 0)
-        and (len(corrupted_files) == 0)
         and (len(incomplete_files) == 0),
     }
 
@@ -339,7 +261,6 @@ def validate_downloads(directory: str) -> Tuple[bool, Dict]:
         print(f"❌ 校验失败: 发现 {total_failed} 个失败文件")
         print(f"   - 缺失: {len(missing_files)} 个")
         print(f"   - 空文件: {len(zero_size_files)} 个")
-        print(f"   - 损坏: {len(corrupted_files)} 个")
         print(f"   - 不完整: {len(incomplete_files)} 个")
     print(f"{'=' * 60}\n")
 
