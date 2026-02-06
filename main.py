@@ -7,15 +7,16 @@ M3U8下载工具主入口
 from __future__ import annotations
 
 import argparse
-import os
+import os  # 仅用于 os.chdir（pathlib 无等价 API）
 import sys
 from dataclasses import dataclass
+from pathlib import Path
 
 from scrapy.crawler import CrawlerProcess
 from scrapy.utils.project import get_project_settings
 
 # 添加scrapy项目路径到sys.path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "scrapy_project"))
+sys.path.insert(0, str(Path(__file__).parent / "scrapy_project"))
 
 from m3u8_spider.spiders.m3u8_downloader import M3U8DownloaderSpider
 
@@ -57,19 +58,19 @@ class DownloadConfig:
         return name
 
     @property
-    def project_root(self) -> str:
+    def project_root(self) -> Path:
         """项目根目录（main.py 所在目录）"""
-        return os.path.dirname(os.path.abspath(__file__))
+        return Path(__file__).resolve().parent
 
     @property
-    def scrapy_project_dir(self) -> str:
+    def scrapy_project_dir(self) -> Path:
         """Scrapy 项目目录"""
-        return os.path.join(self.project_root, "scrapy_project")
+        return self.project_root / "scrapy_project"
 
     @property
-    def download_dir(self) -> str:
+    def download_dir(self) -> Path:
         """下载输出目录路径"""
-        return os.path.join(self.project_root, self.sanitized_filename)
+        return self.project_root / self.sanitized_filename
 
 
 class M3U8DownloadRunner:
@@ -83,12 +84,12 @@ class M3U8DownloadRunner:
 
     def run(self) -> None:
         """执行下载：切换工作目录、应用设置、启动爬虫、恢复目录。"""
-        original_dir = os.getcwd()
+        original_cwd = Path.cwd()
         try:
             self._chdir_to_scrapy_project()
             self._start_crawler()
         finally:
-            os.chdir(original_dir)
+            os.chdir(original_cwd)
 
     def _chdir_to_scrapy_project(self) -> None:
         """设置 Scrapy 项目路径并切换工作目录"""
