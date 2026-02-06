@@ -11,6 +11,7 @@ This is a Python-based M3U8 video downloader that uses the Scrapy framework to d
 By default:
 - Downloaded segments are saved to `movies/<video_name>/` at project root
 - Merged MP4 files are saved to `mp4/` at project root
+- Download logs are saved to `logs/<video_name>.log` at project root
 - Simple names like `my_video` are resolved to `movies/my_video`
 - Full paths or relative paths (like `./my_video`) are used as-is
 
@@ -54,6 +55,7 @@ python merge_to_mp4.py <directory_or_video_name> [output.mp4]
 - **os module**: Only use `os.chdir()` and `os.getcwd()` where pathlib has no equivalent
 - **Imports**: Add `from __future__ import annotations` for modern type hints
 - **Type hints**: Use `list[str] | None` style instead of `List[str] | Optional[str]`
+- **Functions over classes**: Prefer module-level functions with clear single responsibilities
 
 ## Architecture
 
@@ -64,9 +66,10 @@ The project is organized into two main parts: the Scrapy framework for downloadi
 1. **`main.py`** - Primary entry point that:
    - Parses CLI arguments (URL, filename, concurrency, delay)
    - Configures Scrapy settings (changes working directory to `scrapy_project/`)
-   - Spawns the `M3U8DownloaderSpider` with `download_directory` parameter
-   - Uses `DownloadConfig` dataclass for immutable configuration
-   - Creates download directories under `movies/` by default
+   - Creates download directories under `movies/` and log directories under `logs/`
+   - Uses Scrapy's `M3U8_LOG_FILE` setting for log output
+   - Spawns `M3U8DownloaderSpider` with `download_directory` parameter
+   - Uses function-based architecture: `_parse_args()`, `_run_scrapy()`, `_print_header()`, `_print_footer()`
 
 2. **`validate_downloads.py`** - Validation utility that:
    - Uses `_resolve_directory()` helper to resolve video names to `movies/<name>`
@@ -89,11 +92,11 @@ The Scrapy project follows the standard Scrapy pattern:
 - **`spiders/m3u8_downloader.py`** - Core spider with two-phase parsing:
   1. `start_requests()` → `parse_m3u8()`: Downloads and parses M3U8 playlist
   2. Yields `M3U8Item` objects for each segment (handled by pipeline)
-  3. Receives `download_directory` parameter to set the download location
+  3. Receives `download_directory` parameter to set download location
 
 - **`pipelines.py`** - `M3U8FilePipeline` extends Scrapy's `FilesPipeline`:
   - Overrides `file_path()` to use custom filenames
-  - Uses `open_spider()` to set the download directory from the spider
+  - Uses `open_spider()` to set download directory from spider
   - Files are saved to `movies/<filename>/` by default
   - Uses `pathlib.Path` for all file operations
 
@@ -102,6 +105,12 @@ The Scrapy project follows the standard Scrapy pattern:
   - `AUTOTHROTTLE_ENABLED = True` for rate limiting
   - `ROBOTSTXT_OBEY = False`
   - `COOKIES_ENABLED = False`
+
+- **`extensions.py`** - Scrapy extensions:
+  - `M3U8FileLogExtension` - Configures log file output via `M3U8_LOG_FILE` setting
+
+- **`logformatter.py`** - Custom log formatter:
+  - Defines log output format for download operations
 
 ### M3U8 Parsing Strategy
 
@@ -118,21 +127,26 @@ Both handle:
 
 1. User runs `main.py` with M3U8 URL and filename
 2. `main.py` creates download directory under `movies/<filename>/`
-3. `main.py` changes to `scrapy_project/` directory and runs the spider
-4. Spider receives `download_directory` as parameter
-5. Spider downloads the M3U8 file and saves it as `<directory>/playlist.txt`
-6. Spider yields items for each TS segment URL
-7. Pipeline downloads each TS file to the specified directory
-8. User runs validation script to verify completeness
-9. User runs merge script to create MP4 in `mp4/` directory
+3. `main.py` creates log directory under `logs/`
+4. `main.py` configures Scrapy's `M3U8_LOG_FILE` setting
+5. `main.py` changes to `scrapy_project/` directory and runs the spider
+6. Spider receives `download_directory` as parameter
+7. Spider downloads M3U8 file and saves it as `<directory>/playlist.txt`
+8. Spider yields items for each TS segment URL
+9. Pipeline downloads each TS file to specified directory
+10. Logs are written to both console and `logs/<filename>.log`
+11. User runs validation script to verify completeness
+12. User runs merge script to create MP4 in `mp4/` directory
 
 ## Important Notes
 
 - Default download directory is `movies/` at project root
+- Default log directory is `logs/` at project root
 - Default MP4 output directory is `mp4/` at project root
 - The working directory is changed to `scrapy_project/` during download operation
 - `download_directory` is passed directly to the spider as a parameter
 - The `_resolve_directory()` helper resolves simple names to `movies/<name>`
+- Scrapy's `M3U8_LOG_FILE` setting configures the log file path
 - When modifying the spider, remember that `download_directory` is an absolute path
 - The `m3u8` library requires the base M3U8 URI for proper relative URL resolution
 - Use `pathlib.Path` for all file operations, only use `os` for `chdir()` and `getcwd()`
