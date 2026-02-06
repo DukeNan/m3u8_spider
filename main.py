@@ -7,10 +7,12 @@ M3U8下载工具主入口
 from __future__ import annotations
 
 import argparse
+import logging
 import os  # 仅用于 os.chdir（pathlib 无等价 API）
 import sys
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 from scrapy.crawler import CrawlerProcess
 from scrapy.utils.project import get_project_settings
@@ -37,6 +39,21 @@ DEFAULT_BASE_DIR: str = "movies"
 
 # 日志目录（项目根下的 logs/）
 LOGS_DIR: str = "logs"
+
+
+def _add_file_log_handler(log_file: Path, settings: Any) -> None:
+    """为 root logger 添加文件 Handler，与 Scrapy 的 StreamHandler 并存，实现控制台+文件双输出。"""
+    file_handler = logging.FileHandler(
+        log_file, mode="a", encoding=settings.get("LOG_ENCODING", "utf-8")
+    )
+    file_handler.setFormatter(
+        logging.Formatter(
+            fmt=settings.get("LOG_FORMAT"),
+            datefmt=settings.get("LOG_DATEFORMAT"),
+        )
+    )
+    file_handler.setLevel(settings.get("LOG_LEVEL", "DEBUG"))
+    logging.root.addHandler(file_handler)
 
 
 @dataclass(frozen=True)
@@ -112,8 +129,7 @@ class M3U8DownloadRunner:
         settings = get_project_settings()
         settings.set("CONCURRENT_REQUESTS", self._config.concurrent)
         settings.set("DOWNLOAD_DELAY", self._config.delay)
-        # 使用 Scrapy 的 LOG_FILE/LOG_LEVEL，否则 configure_logging() 会覆盖手动添加的 handler，控制台日志不会写入文件
-        settings.set("LOG_FILE", str(log_file))
+        # 不设置 LOG_FILE，让 Scrapy 只添加控制台 Handler；文件输出由下方额外添加的 FileHandler 提供
         settings.set("LOG_LEVEL", "DEBUG")
 
         process = CrawlerProcess(settings)
@@ -124,6 +140,8 @@ class M3U8DownloadRunner:
             download_directory=str(self._config.download_dir),
             retry_urls=self._config.retry_urls,
         )
+        # 在 start() 前为 root logger 添加文件 Handler，与 Scrapy 的 StreamHandler 并存，实现控制台+文件双输出
+        _add_file_log_handler(log_file, settings)
         process.start()
 
 
