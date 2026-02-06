@@ -7,6 +7,7 @@ M3U8下载工具主入口
 from __future__ import annotations
 
 import argparse
+import logging
 import os  # 仅用于 os.chdir（pathlib 无等价 API）
 import sys
 from dataclasses import dataclass
@@ -34,6 +35,9 @@ DEFAULT_DELAY: float = 0.0
 
 # 默认下载输出基目录（项目根下的 movies/）
 DEFAULT_BASE_DIR: str = "movies"
+
+# 日志目录（项目根下的 logs/）
+LOGS_DIR: str = "logs"
 
 
 @dataclass(frozen=True)
@@ -101,6 +105,17 @@ class M3U8DownloadRunner:
     def _start_crawler(self) -> None:
         """获取 Scrapy 设置、更新参数、创建进程并启动爬虫"""
         self._config.download_dir.parent.mkdir(parents=True, exist_ok=True)
+
+        log_dir = self._config.project_root / LOGS_DIR
+        log_dir.mkdir(parents=True, exist_ok=True)
+        log_file = log_dir / f"{self._config.sanitized_filename}.log"
+        file_handler = logging.FileHandler(log_file, encoding="utf-8")
+        file_handler.setLevel(logging.DEBUG)
+        file_handler.setFormatter(
+            logging.Formatter("%(asctime)s [%(name)s] %(levelname)s: %(message)s")
+        )
+        scrapy_logger = logging.getLogger("scrapy")
+        scrapy_logger.addHandler(file_handler)
 
         settings = get_project_settings()
         settings.set("CONCURRENT_REQUESTS", self._config.concurrent)
@@ -188,6 +203,7 @@ class DownloadApp:
         print(sep)
         print(f"M3U8 URL: {config.m3u8_url}")
         print(f"保存目录: {DEFAULT_BASE_DIR}/{config.sanitized_filename}")
+        print(f"日志文件: {LOGS_DIR}/{config.sanitized_filename}.log")
         print(f"并发数: {config.concurrent}")
         print(f"下载延迟: {config.delay}秒")
         print(f"{sep}\n")
