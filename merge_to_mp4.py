@@ -8,7 +8,6 @@ import os
 import sys
 import subprocess
 import re
-from pathlib import Path
 from typing import List, Optional
 
 
@@ -131,7 +130,7 @@ def merge_ts_files(directory: str, output_file: Optional[str] = None) -> bool:
             output_file
         ]
 
-        print(f"\n开始合并...")
+        print("\n开始合并...")
         print(f"命令: {' '.join(cmd)}\n")
 
         # 执行ffmpeg命令
@@ -152,7 +151,7 @@ def merge_ts_files(directory: str, output_file: Optional[str] = None) -> bool:
                 file_size = os.path.getsize(output_file)
                 size_mb = file_size / (1024 * 1024)
                 print(f"\n{'='*60}")
-                print(f"✅ 合并成功!")
+                print("✅ 合并成功!")
                 print(f"输出文件: {output_file}")
                 print(f"文件大小: {size_mb:.2f} MB")
                 print(f"{'='*60}\n")

@@ -6,10 +6,7 @@ M3U8下载文件校验脚本
 
 import os
 import sys
-import re
 import json
-from pathlib import Path
-from urllib.parse import urlparse
 from typing import Dict, List, Tuple
 
 
@@ -21,30 +18,28 @@ def parse_m3u8_file(playlist_path: str) -> List[Dict[str, any]]:
         print(f"错误: 找不到playlist.txt文件: {playlist_path}")
         return segments
 
-    with open(playlist_path, 'r', encoding='utf-8') as f:
+    with open(playlist_path, "r", encoding="utf-8") as f:
         content = f.read()
 
-    lines = content.strip().split('\n')
+    lines = content.strip().split("\n")
     segment_index = 0
 
     for line in lines:
         line = line.strip()
         # 跳过注释和空行
-        if not line or line.startswith('#'):
+        if not line or line.startswith("#"):
             continue
 
         # 如果是URL
-        if line.startswith('http') or (not line.startswith('#') and '.' in line):
+        if line.startswith("http") or (not line.startswith("#") and "." in line):
             # 提取文件名
             filename = os.path.basename(line)
-            if not filename or not filename.endswith('.ts'):
+            if not filename or not filename.endswith(".ts"):
                 filename = f"segment_{segment_index:05d}.ts"
 
-            segments.append({
-                'index': segment_index,
-                'url': line,
-                'expected_filename': filename
-            })
+            segments.append(
+                {"index": segment_index, "url": line, "expected_filename": filename}
+            )
             segment_index += 1
 
     return segments
@@ -60,7 +55,7 @@ def get_file_size(filepath: str) -> int:
 
 def format_size(size_bytes: int) -> str:
     """格式化文件大小"""
-    for unit in ['B', 'KB', 'MB', 'GB']:
+    for unit in ["B", "KB", "MB", "GB"]:
         if size_bytes < 1024.0:
             return f"{size_bytes:.2f} {unit}"
         size_bytes /= 1024.0
@@ -95,7 +90,7 @@ def validate_ts_file(filepath: str) -> bool:
             return False
 
         # 读取文件前部分进行采样检查
-        with open(filepath, 'rb') as f:
+        with open(filepath, "rb") as f:
             # 检查前5个包（如果有的话）
             num_packets_to_check = min(5, file_size // 188)
 
@@ -126,7 +121,7 @@ def validate_ts_file(filepath: str) -> bool:
 
         return True
 
-    except Exception as e:
+    except Exception:
         # 如果读取文件出错，认为文件损坏
         return False
 
@@ -147,7 +142,7 @@ def load_content_lengths(directory: str) -> Dict[str, int]:
         return {}
 
     try:
-        with open(content_lengths_file, 'r', encoding='utf-8') as f:
+        with open(content_lengths_file, "r", encoding="utf-8") as f:
             return json.load(f)
     except Exception:
         return {}
@@ -203,15 +198,15 @@ def validate_downloads(directory: str) -> Tuple[bool, Dict]:
     # 加载Content-Length信息
     content_lengths = load_content_lengths(directory)
 
-    print(f"\n{'='*60}")
+    print(f"\n{'=' * 60}")
     print(f"校验目录: {directory}")
-    print(f"{'='*60}")
+    print(f"{'=' * 60}")
     print(f"预期文件数量: {expected_count}")
 
     # 获取目录中所有.ts文件
     ts_files = []
     for file in os.listdir(directory):
-        if file.endswith('.ts'):
+        if file.endswith(".ts"):
             filepath = os.path.join(directory, file)
             if os.path.isfile(filepath):
                 ts_files.append(file)
@@ -229,7 +224,7 @@ def validate_downloads(directory: str) -> Tuple[bool, Dict]:
         total_size += size
 
     print(f"总文件大小: {format_size(total_size)}")
-    print(f"{'='*60}\n")
+    print(f"{'=' * 60}\n")
 
     # 检查文件数量
     missing_files = []
@@ -237,21 +232,21 @@ def validate_downloads(directory: str) -> Tuple[bool, Dict]:
         print(f"⚠️  警告: 文件数量不匹配！缺少 {expected_count - actual_count} 个文件")
 
         # 找出缺失的文件
-        expected_filenames = {seg['expected_filename'] for seg in expected_segments}
+        expected_filenames = {seg["expected_filename"] for seg in expected_segments}
         actual_filenames = set(ts_files)
         missing_files = list(expected_filenames - actual_filenames)
 
         if missing_files:
-            print(f"\n缺失的文件:")
+            print("\n缺失的文件:")
             for filename in sorted(missing_files):
                 print(f"  - {filename}")
     elif actual_count > expected_count:
         print(f"⚠️  警告: 实际文件数量 ({actual_count}) 多于预期 ({expected_count})")
     else:
-        print(f"✅ 文件数量匹配")
+        print("✅ 文件数量匹配")
 
     # 检查文件大小和格式
-    print(f"\n文件完整性检查:")
+    print("\n文件完整性检查:")
     zero_size_files = []
     corrupted_files = []
     incomplete_files = []
@@ -276,7 +271,9 @@ def validate_downloads(directory: str) -> Tuple[bool, Dict]:
                 expected_length = content_lengths[file]
                 if not validate_content_length(filepath, expected_length):
                     incomplete_files.append(file)
-                    issues.append(f"不完整(实际: {format_size(size)}, 预期: {format_size(expected_length)})")
+                    issues.append(
+                        f"不完整(实际: {format_size(size)}, 预期: {format_size(expected_length)})"
+                    )
 
         # 打印文件状态
         if issues:
@@ -299,10 +296,17 @@ def validate_downloads(directory: str) -> Tuple[bool, Dict]:
             print(f"  - {filename}")
 
     # 收集所有失败的文件（用于获取URL）
-    failed_files_set = set(missing_files) | set(zero_size_files) | set(corrupted_files) | set(incomplete_files)
+    failed_files_set = (
+        set(missing_files)
+        | set(zero_size_files)
+        | set(corrupted_files)
+        | set(incomplete_files)
+    )
 
     # 构建文件名到URL的映射
-    filename_to_url = {seg['expected_filename']: seg['url'] for seg in expected_segments}
+    filename_to_url = {
+        seg["expected_filename"]: seg["url"] for seg in expected_segments
+    }
     failed_urls = {}
     for filename in failed_files_set:
         if filename in filename_to_url:
@@ -310,26 +314,26 @@ def validate_downloads(directory: str) -> Tuple[bool, Dict]:
 
     # 生成报告
     result = {
-        'directory': directory,
-        'expected_count': expected_count,
-        'actual_count': actual_count,
-        'missing_count': expected_count - actual_count,
-        'total_size': total_size,
-        'missing_files': missing_files,
-        'zero_size_files': zero_size_files,
-        'corrupted_files': corrupted_files,
-        'incomplete_files': incomplete_files,
-        'failed_files': list(failed_files_set),
-        'failed_urls': failed_urls,
-        'is_complete': (actual_count == expected_count) and
-                      (len(zero_size_files) == 0) and
-                      (len(corrupted_files) == 0) and
-                      (len(incomplete_files) == 0)
+        "directory": directory,
+        "expected_count": expected_count,
+        "actual_count": actual_count,
+        "missing_count": expected_count - actual_count,
+        "total_size": total_size,
+        "missing_files": missing_files,
+        "zero_size_files": zero_size_files,
+        "corrupted_files": corrupted_files,
+        "incomplete_files": incomplete_files,
+        "failed_files": list(failed_files_set),
+        "failed_urls": failed_urls,
+        "is_complete": (actual_count == expected_count)
+        and (len(zero_size_files) == 0)
+        and (len(corrupted_files) == 0)
+        and (len(incomplete_files) == 0),
     }
 
-    print(f"\n{'='*60}")
-    if result['is_complete']:
-        print(f"✅ 校验通过: 所有文件已完整下载")
+    print(f"\n{'=' * 60}")
+    if result["is_complete"]:
+        print("✅ 校验通过: 所有文件已完整下载")
     else:
         total_failed = len(failed_files_set)
         print(f"❌ 校验失败: 发现 {total_failed} 个失败文件")
@@ -337,9 +341,9 @@ def validate_downloads(directory: str) -> Tuple[bool, Dict]:
         print(f"   - 空文件: {len(zero_size_files)} 个")
         print(f"   - 损坏: {len(corrupted_files)} 个")
         print(f"   - 不完整: {len(incomplete_files)} 个")
-    print(f"{'='*60}\n")
+    print(f"{'=' * 60}\n")
 
-    return result['is_complete'], result
+    return result["is_complete"], result
 
 
 def main():

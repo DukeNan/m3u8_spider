@@ -1,5 +1,4 @@
 import os
-from pathlib import Path
 from urllib.parse import urljoin, urlparse
 import scrapy
 import m3u8

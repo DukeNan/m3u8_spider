@@ -112,7 +112,7 @@ def main():
         filename = filename.replace(char, '_')
 
     print(f"\n{'='*60}")
-    print(f"M3U8下载工具")
+    print("M3U8下载工具")
     print(f"{'='*60}")
     print(f"M3U8 URL: {args.m3u8_url}")
     print(f"保存目录: {filename}")
