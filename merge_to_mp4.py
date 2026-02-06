@@ -4,328 +4,363 @@ M3U8 TS文件合并脚本
 使用ffmpeg将下载的ts文件合并为mp4格式
 """
 
-import os
-import sys
-import subprocess
-import re
+from __future__ import annotations
+
 import json
-from typing import List, Optional, Dict
+import os
+import re
+import subprocess
+import sys
+from dataclasses import dataclass
 
 
-def check_ffmpeg() -> bool:
-    """检查ffmpeg是否安装"""
-    try:
-        subprocess.run(["ffmpeg", "-version"], capture_output=True, check=True)
-        return True
-    except (subprocess.CalledProcessError, FileNotFoundError):
-        return False
+# ---------------------------------------------------------------------------
+# 常量与数据模型
+# ---------------------------------------------------------------------------
+
+TEMP_PLAYLIST_NAME = "temp_playlist.m3u8"
+FILE_LIST_NAME = "file_list.txt"
+ENCRYPTION_INFO_NAME = "encryption_info.json"
+DEFAULT_KEY_FILE = "encryption.key"
 
 
-def get_ts_files(directory: str) -> List[str]:
-    """获取目录中所有ts文件，按文件名排序"""
-    ts_files = []
+@dataclass
+class EncryptionInfo:
+    """加密信息（从 encryption_info.json 加载）"""
 
-    if not os.path.isdir(directory):
-        print(f"错误: 目录不存在: {directory}")
-        return ts_files
+    is_encrypted: bool
+    method: str = "AES-128"
+    key_file: str = DEFAULT_KEY_FILE
+    iv: str | None = None
 
-    # 获取所有.ts文件
-    for file in os.listdir(directory):
-        if file.endswith(".ts"):
-            filepath = os.path.join(directory, file)
-            if os.path.isfile(filepath):
-                ts_files.append(filepath)
+    @classmethod
+    def from_directory(cls, directory: str) -> EncryptionInfo | None:
+        """
+        从下载目录加载加密信息
 
-    # 排序：尝试按文件名中的数字排序
-    def sort_key(filepath):
-        filename = os.path.basename(filepath)
-        # 尝试提取文件名中的数字
-        numbers = re.findall(r"\d+", filename)
-        if numbers:
-            return int(numbers[0])
-        return filename
+        Args:
+            directory: 下载目录
 
-    ts_files.sort(key=sort_key)
-    return ts_files
-
-
-def load_encryption_info(directory: str) -> Optional[Dict]:
-    """
-    加载加密信息
-
-    Args:
-        directory: 下载目录
-
-    Returns:
-        Dict: 加密信息字典，如果不存在返回None
-    """
-    encryption_info_path = os.path.join(directory, "encryption_info.json")
-
-    if not os.path.exists(encryption_info_path):
-        return None
-
-    try:
-        with open(encryption_info_path, "r", encoding="utf-8") as f:
-            return json.load(f)
-    except Exception:
-        return None
+        Returns:
+            加密信息；若文件不存在或解析失败则返回 None
+        """
+        path = os.path.join(directory, ENCRYPTION_INFO_NAME)
+        if not os.path.exists(path):
+            return None
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+        except Exception:
+            return None
+        return cls(
+            is_encrypted=data.get("is_encrypted", False),
+            method=data.get("method", "AES-128"),
+            key_file=data.get("key_file", DEFAULT_KEY_FILE),
+            iv=data.get("iv"),
+        )
 
 
-def create_hls_key_info_file(directory: str, key_file: str) -> str:
-    """
-    创建FFmpeg密钥信息文件
-
-    Args:
-        directory: 下载目录
-        key_file: 密钥文件名
-
-    Returns:
-        str: 密钥信息文件路径
-    """
-    key_info_path = os.path.join(directory, "key_info.txt")
-    key_file_path = os.path.join(directory, key_file)
-
-    with open(key_info_path, "w", encoding="utf-8") as f:
-        # 第一行：密钥文件的绝对路径
-        f.write(f"{os.path.abspath(key_file_path)}\n")
-        # 第二行：密钥URL（可选，留空）
-        f.write("\n")
-
-    return key_info_path
+# ---------------------------------------------------------------------------
+# FFmpeg 与 TS 列表
+# ---------------------------------------------------------------------------
 
 
-def create_temp_m3u8(
-    directory: str, ts_files: List[str], encryption_info: Optional[Dict] = None
-) -> str:
-    """
-    创建临时的m3u8文件
+class FFmpegChecker:
+    """检查 ffmpeg 是否可用（单一职责）"""
 
-    Args:
-        directory: 下载目录
-        ts_files: TS文件列表（绝对路径）
-        encryption_info: 加密信息字典
+    @staticmethod
+    def is_available() -> bool:
+        """检查 ffmpeg 是否安装"""
+        try:
+            subprocess.run(
+                ["ffmpeg", "-version"],
+                capture_output=True,
+                check=True,
+            )
+            return True
+        except (subprocess.CalledProcessError, FileNotFoundError):
+            return False
 
-    Returns:
-        str: 临时m3u8文件路径
-    """
-    temp_m3u8_path = os.path.join(directory, "temp_playlist.m3u8")
-
-    with open(temp_m3u8_path, "w", encoding="utf-8") as f:
-        # 写入M3U8头部
-        f.write("#EXTM3U\n")
-        f.write("#EXT-X-VERSION:3\n")
-        f.write("#EXT-X-TARGETDURATION:10\n")
-
-        # 如果加密，写入EXT-X-KEY标签
-        if encryption_info and encryption_info.get("is_encrypted"):
-            key_file_path = os.path.join(directory, encryption_info.get("key_file", "encryption.key"))
-            key_uri = f"file://{os.path.abspath(key_file_path)}"
-
-            key_line = f'#EXT-X-KEY:METHOD={encryption_info.get("method", "AES-128")},URI="{key_uri}"'
-
-            # 如果有IV，添加IV参数
-            if encryption_info.get("iv"):
-                key_line += f',IV={encryption_info["iv"]}'
-
-            f.write(key_line + "\n")
-
-        # 写入所有TS文件
-        for ts_file in ts_files:
-            f.write("#EXTINF:10.0,\n")
-            # 使用绝对路径
-            f.write(f"{os.path.abspath(ts_file)}\n")
-
-        # 写入结束标签
-        f.write("#EXT-X-ENDLIST\n")
-
-    return temp_m3u8_path
-
-
-def create_file_list(ts_files: List[str], list_file: str) -> str:
-    """创建ffmpeg文件列表"""
-    list_path = os.path.join(os.path.dirname(ts_files[0]), list_file)
-
-    with open(list_path, "w", encoding="utf-8") as f:
-        for ts_file in ts_files:
-            # 使用绝对路径，并转义特殊字符
-            abs_path = os.path.abspath(ts_file)
-            # 转义单引号和反斜杠
-            abs_path = abs_path.replace("'", "'\\''")
-            f.write(f"file '{abs_path}'\n")
-
-    return list_path
-
-
-def merge_ts_files(directory: str, output_file: Optional[str] = None) -> bool:
-    """合并ts文件为mp4"""
-    directory = os.path.abspath(directory)
-
-    if not os.path.isdir(directory):
-        print(f"错误: 目录不存在: {directory}")
-        return False
-
-    # 检查ffmpeg
-    if not check_ffmpeg():
+    @staticmethod
+    def print_install_help() -> None:
+        """打印安装 ffmpeg 的提示"""
         print("错误: 未找到ffmpeg，请先安装ffmpeg")
         print("安装方法:")
         print("  macOS: brew install ffmpeg")
         print("  Ubuntu/Debian: sudo apt-get install ffmpeg")
         print("  Windows: 从 https://ffmpeg.org/download.html 下载")
-        return False
 
-    # 检测加密状态
-    encryption_info = load_encryption_info(directory)
-    is_encrypted = encryption_info and encryption_info.get("is_encrypted", False)
 
-    if is_encrypted:
-        print("⚠️  检测到加密的m3u8文件")
-        print(f"   加密方法: {encryption_info.get('method', 'Unknown')}")
+def _ts_sort_key(filepath: str) -> int | str:
+    """排序键：优先按文件名中的数字，否则按文件名"""
+    filename = os.path.basename(filepath)
+    numbers = re.findall(r"\d+", filename)
+    if numbers:
+        return int(numbers[0])
+    return filename
 
-        # 检查密钥文件是否存在
-        key_file = encryption_info.get("key_file", "encryption.key")
-        key_file_path = os.path.join(directory, key_file)
 
-        if not os.path.exists(key_file_path):
-            print(f"错误: 密钥文件不存在: {key_file_path}")
-            print("提示: 请确保在下载时已正确下载密钥文件")
+class TSFileCollector:
+    """获取目录中所有 .ts 文件并按约定排序"""
+
+    @staticmethod
+    def collect(directory: str) -> list[str]:
+        """获取目录中所有 ts 文件（绝对路径），按文件名数字排序"""
+        if not os.path.isdir(directory):
+            print(f"错误: 目录不存在: {directory}")
+            return []
+
+        paths = []
+        for name in os.listdir(directory):
+            if name.endswith(".ts"):
+                path = os.path.join(directory, name)
+                if os.path.isfile(path):
+                    paths.append(path)
+        paths.sort(key=_ts_sort_key)
+        return paths
+
+
+# ---------------------------------------------------------------------------
+# 临时文件构建（保留原有逻辑与注释）
+# ---------------------------------------------------------------------------
+
+
+def _create_temp_m3u8(
+    directory: str,
+    ts_files: list[str],
+    encryption_info: EncryptionInfo | None,
+) -> str:
+    """
+    创建临时的 m3u8 文件
+
+    Args:
+        directory: 下载目录
+        ts_files: TS 文件列表（绝对路径）
+        encryption_info: 加密信息（可为 None）
+
+    Returns:
+        临时 m3u8 文件路径
+    """
+    path = os.path.join(directory, TEMP_PLAYLIST_NAME)
+    with open(path, "w", encoding="utf-8") as f:
+        f.write("#EXTM3U\n")
+        f.write("#EXT-X-VERSION:3\n")
+        f.write("#EXT-X-TARGETDURATION:10\n")
+
+        if encryption_info and encryption_info.is_encrypted:
+            key_path = os.path.join(directory, encryption_info.key_file)
+            key_uri = f"file://{os.path.abspath(key_path)}"
+            key_line = f'#EXT-X-KEY:METHOD={encryption_info.method},URI="{key_uri}"'
+            if encryption_info.iv:
+                key_line += f',IV={encryption_info.iv}'
+            f.write(key_line + "\n")
+
+        for ts_file in ts_files:
+            f.write("#EXTINF:10.0,\n")
+            f.write(f"{os.path.abspath(ts_file)}\n")
+        f.write("#EXT-X-ENDLIST\n")
+    return path
+
+
+def _create_file_list(ts_files: list[str], list_filename: str) -> str:
+    """创建 ffmpeg concat 文件列表"""
+    list_path = os.path.join(os.path.dirname(ts_files[0]), list_filename)
+    with open(list_path, "w", encoding="utf-8") as f:
+        for ts_file in ts_files:
+            abs_path = os.path.abspath(ts_file)
+            abs_path = abs_path.replace("'", "'\\''")
+            f.write(f"file '{abs_path}'\n")
+    return list_path
+
+
+# ---------------------------------------------------------------------------
+# 合并执行器
+# ---------------------------------------------------------------------------
+
+
+class MP4Merger:
+    """
+    将目录中的 TS 文件合并为 MP4。
+    负责：检查环境、解析加密信息、收集 TS、解析输出路径、确认覆盖、调用 ffmpeg、清理临时文件。
+    """
+
+    def __init__(self, directory: str, output_file: str | None = None) -> None:
+        self._directory = os.path.abspath(directory)
+        self._output_file = output_file
+
+    def run(self) -> bool:
+        """执行合并，成功返回 True，失败返回 False（含打印错误与清理）"""
+        if not self._ensure_directory():
+            return False
+        if not self._ensure_ffmpeg():
             return False
 
-        print(f"   密钥文件: {key_file}")
-    else:
-        print("✅ 未检测到加密，将使用普通方式合并")
+        encryption = EncryptionInfo.from_directory(self._directory)
+        is_encrypted = encryption is not None and encryption.is_encrypted
 
-    # 获取ts文件列表
-    ts_files = get_ts_files(directory)
+        if is_encrypted and encryption:
+            if not self._check_encryption_key(encryption):
+                return False
+            self._print_encryption_detected(encryption)
+        else:
+            print("✅ 未检测到加密，将使用普通方式合并")
 
-    if not ts_files:
-        print(f"错误: 在目录 {directory} 中未找到.ts文件")
-        return False
+        ts_files = TSFileCollector.collect(self._directory)
+        if not ts_files:
+            print(f"错误: 在目录 {self._directory} 中未找到.ts文件")
+            return False
 
-    print(f"\n{'=' * 60}")
-    print(f"合并目录: {directory}")
-    print(f"找到 {len(ts_files)} 个TS文件")
-    print(f"{'=' * 60}\n")
+        self._print_merge_header(ts_files)
 
-    # 确定输出文件名
-    if not output_file:
-        # 使用目录名作为输出文件名
-        dir_name = os.path.basename(directory.rstrip("/"))
-        output_file = os.path.join(directory, f"{dir_name}.mp4")
-    else:
-        # 如果输出文件不是绝对路径，则相对于目录
-        if not os.path.isabs(output_file):
-            output_file = os.path.join(directory, output_file)
+        output_path = self._resolve_output_path()
+        if not self._confirm_overwrite(output_path):
+            return False
+        print(f"输出文件: {output_path}\n")
 
-    # 如果输出文件已存在，询问是否覆盖
-    if os.path.exists(output_file):
-        response = input(f"输出文件已存在: {output_file}\n是否覆盖? (y/n): ")
+        temp_files: list[str] = []
+        try:
+            if is_encrypted and encryption:
+                temp_files = self._run_encrypted(ts_files, output_path, encryption)
+            else:
+                temp_files = self._run_concat(ts_files, output_path)
+            self._cleanup(temp_files)
+            return self._print_success(output_path)
+        except subprocess.CalledProcessError as e:
+            print(f"错误: ffmpeg执行失败: {e}")
+            self._cleanup(temp_files)
+            return False
+        except Exception as e:
+            print(f"错误: {e}")
+            self._cleanup(temp_files)
+            return False
+
+    def _ensure_directory(self) -> bool:
+        if not os.path.isdir(self._directory):
+            print(f"错误: 目录不存在: {self._directory}")
+            return False
+        return True
+
+    def _ensure_ffmpeg(self) -> bool:
+        if not FFmpegChecker.is_available():
+            FFmpegChecker.print_install_help()
+            return False
+        return True
+
+    def _check_encryption_key(self, encryption: EncryptionInfo) -> bool:
+        key_path = os.path.join(self._directory, encryption.key_file)
+        if not os.path.exists(key_path):
+            print(f"错误: 密钥文件不存在: {key_path}")
+            print("提示: 请确保在下载时已正确下载密钥文件")
+            return False
+        return True
+
+    def _print_encryption_detected(self, encryption: EncryptionInfo) -> None:
+        print("⚠️  检测到加密的m3u8文件")
+        print(f"   加密方法: {encryption.method}")
+        print(f"   密钥文件: {encryption.key_file}")
+
+    def _print_merge_header(self, ts_files: list[str]) -> None:
+        sep = "=" * 60
+        print(f"\n{sep}")
+        print(f"合并目录: {self._directory}")
+        print(f"找到 {len(ts_files)} 个TS文件")
+        print(f"{sep}\n")
+
+    def _resolve_output_path(self) -> str:
+        if not self._output_file:
+            dir_name = os.path.basename(self._directory.rstrip("/"))
+            return os.path.join(self._directory, f"{dir_name}.mp4")
+        if os.path.isabs(self._output_file):
+            return self._output_file
+        return os.path.join(self._directory, self._output_file)
+
+    def _confirm_overwrite(self, output_path: str) -> bool:
+        if not os.path.exists(output_path):
+            return True
+        response = input(f"输出文件已存在: {output_path}\n是否覆盖? (y/n): ")
         if response.lower() != "y":
             print("已取消操作")
             return False
+        return True
 
-    print(f"输出文件: {output_file}\n")
+    def _run_encrypted(
+        self,
+        ts_files: list[str],
+        output_path: str,
+        encryption: EncryptionInfo,
+    ) -> list[str]:
+        """加密文件：使用 FFmpeg HLS demuxer；返回需清理的临时文件列表"""
+        print("使用FFmpeg HLS demuxer处理加密文件...")
+        temp_m3u8 = _create_temp_m3u8(self._directory, ts_files, encryption)
+        print(f"创建临时M3U8文件: {temp_m3u8}")
 
-    temp_files = []  # 用于清理临时文件
+        cmd = [
+            "ffmpeg",
+            "-allowed_extensions", "ALL",
+            "-i", temp_m3u8,
+            "-c", "copy",
+            "-y", output_path,
+        ]
+        print("\n开始合并加密文件...")
+        print(f"命令: {' '.join(cmd)}\n")
+        subprocess.run(cmd, check=True, capture_output=False, text=True)
+        return [temp_m3u8]
 
-    try:
-        if is_encrypted:
-            # 加密文件：使用FFmpeg的HLS demuxer和密钥信息文件
-            print("使用FFmpeg HLS demuxer处理加密文件...")
+    def _run_concat(
+        self,
+        ts_files: list[str],
+        output_path: str,
+    ) -> list[str]:
+        """未加密：使用 concat demuxer；返回需清理的临时文件列表"""
+        print("使用concat demuxer合并文件...")
+        list_file = _create_file_list(ts_files, FILE_LIST_NAME)
+        print(f"创建文件列表: {list_file}")
 
-            # 创建临时m3u8文件
-            temp_m3u8 = create_temp_m3u8(directory, ts_files, encryption_info)
-            temp_files.append(temp_m3u8)
-            print(f"创建临时M3U8文件: {temp_m3u8}")
+        cmd = [
+            "ffmpeg",
+            "-f", "concat",
+            "-safe", "0",
+            "-i", list_file,
+            "-c", "copy",
+            "-y", output_path,
+        ]
+        print("\n开始合并...")
+        print(f"命令: {' '.join(cmd)}\n")
+        subprocess.run(cmd, check=True, capture_output=False, text=True)
+        return [list_file]
 
-            # 构建ffmpeg命令（使用HLS demuxer）
-            cmd = [
-                "ffmpeg",
-                "-allowed_extensions",
-                "ALL",
-                "-i",
-                temp_m3u8,
-                "-c",
-                "copy",  # 直接复制流，不重新编码
-                "-y",  # 覆盖输出文件
-                output_file,
-            ]
+    @staticmethod
+    def _cleanup(paths: list[str]) -> None:
+        for path in paths:
+            if os.path.exists(path):
+                os.remove(path)
 
-            print("\n开始合并加密文件...")
-            print(f"命令: {' '.join(cmd)}\n")
-
-            # 执行ffmpeg命令
-            result = subprocess.run(cmd, check=True, capture_output=False, text=True)
-
-        else:
-            # 未加密文件：使用concat demuxer（原有方法）
-            print("使用concat demuxer合并文件...")
-
-            # 创建文件列表
-            list_file = create_file_list(ts_files, "file_list.txt")
-            temp_files.append(list_file)
-            print(f"创建文件列表: {list_file}")
-
-            # 构建ffmpeg命令
-            cmd = [
-                "ffmpeg",
-                "-f",
-                "concat",
-                "-safe",
-                "0",
-                "-i",
-                list_file,
-                "-c",
-                "copy",  # 直接复制流，不重新编码（速度快）
-                "-y",  # 覆盖输出文件
-                output_file,
-            ]
-
-            print("\n开始合并...")
-            print(f"命令: {' '.join(cmd)}\n")
-
-            # 执行ffmpeg命令
-            result = subprocess.run(cmd, check=True, capture_output=False, text=True)
-
-        # 清理临时文件
-        for temp_file in temp_files:
-            if os.path.exists(temp_file):
-                os.remove(temp_file)
-
-        if result.returncode == 0:
-            # 检查输出文件是否存在
-            if os.path.exists(output_file):
-                file_size = os.path.getsize(output_file)
-                size_mb = file_size / (1024 * 1024)
-                print(f"\n{'=' * 60}")
-                print("✅ 合并成功!")
-                print(f"输出文件: {output_file}")
-                print(f"文件大小: {size_mb:.2f} MB")
-                print(f"{'=' * 60}\n")
-                return True
-            else:
-                print("错误: 合并完成但输出文件不存在")
-                return False
-        else:
-            print("错误: ffmpeg执行失败")
+    def _print_success(self, output_path: str) -> bool:
+        if not os.path.exists(output_path):
+            print("错误: 合并完成但输出文件不存在")
             return False
-
-    except subprocess.CalledProcessError as e:
-        print(f"错误: ffmpeg执行失败: {e}")
-        # 清理临时文件
-        for temp_file in temp_files:
-            if os.path.exists(temp_file):
-                os.remove(temp_file)
-        return False
-    except Exception as e:
-        print(f"错误: {e}")
-        # 清理临时文件
-        for temp_file in temp_files:
-            if os.path.exists(temp_file):
-                os.remove(temp_file)
-        return False
+        file_size = os.path.getsize(output_path)
+        size_mb = file_size / (1024 * 1024)
+        sep = "=" * 60
+        print(f"\n{sep}")
+        print("✅ 合并成功!")
+        print(f"输出文件: {output_path}")
+        print(f"文件大小: {size_mb:.2f} MB")
+        print(f"{sep}\n")
+        return True
 
 
-def main():
+# ---------------------------------------------------------------------------
+# 兼容原有接口与入口
+# ---------------------------------------------------------------------------
+
+
+def merge_ts_files(directory: str, output_file: str | None = None) -> bool:
+    """合并 ts 文件为 mp4（保留原有函数接口）"""
+    return MP4Merger(directory, output_file).run()
+
+
+def main() -> None:
     """主函数"""
     if len(sys.argv) < 2:
         print("用法: python merge_to_mp4.py <目录路径> [输出文件名]")
@@ -335,7 +370,6 @@ def main():
 
     directory = sys.argv[1]
     output_file = sys.argv[2] if len(sys.argv) > 2 else None
-
     success = merge_ts_files(directory, output_file)
     sys.exit(0 if success else 1)
 
