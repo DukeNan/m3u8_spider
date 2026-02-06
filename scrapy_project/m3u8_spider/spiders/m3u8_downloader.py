@@ -202,6 +202,9 @@ class M3U8DownloaderSpider(scrapy.Spider):
     name = "m3u8_downloader"
     allowed_domains = []
 
+    # 是否在日志中打印每个 pipeline 产出的 item（Scraped from ... + item 的 DEBUG 行），默认 False 避免刷屏
+    log_pipeline_items = False
+
     def __init__(
         self,
         m3u8_url: str | None = None,
