@@ -6,7 +6,6 @@ M3U8下载工具主入口
 
 import sys
 import os
-import re
 import argparse
 from scrapy.crawler import CrawlerProcess
 from scrapy.utils.project import get_project_settings
@@ -15,10 +14,6 @@ from scrapy.utils.project import get_project_settings
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'scrapy_project'))
 
 from m3u8_spider.spiders.m3u8_downloader import M3U8DownloaderSpider
-
-# 导入校验和合并函数
-from validate_downloads import validate_downloads
-from merge_to_mp4 import merge_ts_files
 
 
 def download_m3u8(m3u8_url, filename, concurrent, delay, retry_urls=None):
@@ -30,7 +25,7 @@ def download_m3u8(m3u8_url, filename, concurrent, delay, retry_urls=None):
         filename: 保存的文件名
         concurrent: 并发数
         delay: 下载延迟
-        retry_urls: 重试URL列表（可选）
+        retry_urls: 重试URL列表（可选，用于重试失败的下载）
     """
     # 设置Scrapy项目路径
     project_dir = os.path.join(os.path.dirname(__file__), 'scrapy_project')
@@ -61,99 +56,6 @@ def download_m3u8(m3u8_url, filename, concurrent, delay, retry_urls=None):
     finally:
         # 恢复工作目录
         os.chdir(original_dir)
-
-
-def retry_failed_downloads(directory, failed_urls, m3u8_url, filename, concurrent, delay, max_retries=3):
-    """
-    重试失败的下载
-
-    Args:
-        directory: 下载目录
-        failed_urls: 失败文件的URL映射 {filename: url}
-        m3u8_url: M3U8文件URL
-        filename: 保存的文件名
-        concurrent: 并发数
-        delay: 下载延迟
-        max_retries: 最大重试次数
-
-    Returns:
-        bool: 是否全部成功
-    """
-    retry_count = 0
-    remaining_failures = failed_urls.copy()
-
-    while retry_count < max_retries and remaining_failures:
-        retry_count += 1
-        print(f"\n{'='*60}")
-        print(f"第 {retry_count} 次重试")
-        print(f"{'='*60}")
-        print(f"需要重试的文件数量: {len(remaining_failures)}")
-        print(f"注意: 损坏的文件将被重新下载覆盖")
-
-        # 构建重试URL列表
-        retry_urls = []
-        for fname, url in remaining_failures.items():
-            # 从文件名提取索引
-            match = re.match(r'segment_(\d+)\.ts', fname)
-            index = int(match.group(1)) if match else 0
-
-            retry_urls.append({
-                'url': url,
-                'filename': fname,
-                'index': index
-            })
-
-        # 重新下载
-        print(f"\n开始重试下载 {len(retry_urls)} 个文件...\n")
-        download_m3u8(m3u8_url, filename, concurrent, delay, retry_urls=retry_urls)
-
-        # 重新校验
-        print(f"\n重新校验下载结果...")
-        is_complete, result = validate_downloads(directory)
-
-        if is_complete:
-            print(f"✅ 重试成功！所有文件已完整下载")
-            return True
-
-        # 更新剩余失败的文件
-        remaining_failures = result.get('failed_urls', {})
-
-        if remaining_failures:
-            print(f"\n仍有 {len(remaining_failures)} 个文件失败")
-            if retry_count < max_retries:
-                print(f"将进行第 {retry_count + 1} 次重试...")
-
-    # 最终仍有失败
-    if remaining_failures:
-        print(f"\n❌ 重试 {max_retries} 次后，仍有 {len(remaining_failures)} 个文件失败")
-        return False
-
-    return True
-
-
-def save_failed_files_log(directory, failed_urls):
-    """
-    保存失败文件日志
-
-    Args:
-        directory: 下载目录
-        failed_urls: 失败文件的URL映射
-    """
-    if not failed_urls:
-        return
-
-    log_file = os.path.join(directory, "failed_files.txt")
-    try:
-        with open(log_file, 'w', encoding='utf-8') as f:
-            f.write(f"失败文件列表 (共 {len(failed_urls)} 个)\n")
-            f.write("="*60 + "\n\n")
-            for filename, url in sorted(failed_urls.items()):
-                f.write(f"文件名: {filename}\n")
-                f.write(f"URL: {url}\n")
-                f.write("-"*60 + "\n")
-        print(f"\n失败文件列表已保存到: {log_file}")
-    except Exception as e:
-        print(f"\n无法保存失败文件日志: {e}")
 
 
 def main():
@@ -192,19 +94,6 @@ def main():
         help='下载延迟（秒，默认: 0）'
     )
 
-    parser.add_argument(
-        '--no-merge',
-        action='store_true',
-        help='下载完成后不自动合并为MP4'
-    )
-
-    parser.add_argument(
-        '--max-retries',
-        type=int,
-        default=3,
-        help='失败文件的最大重试次数（默认: 3）'
-    )
-
     args = parser.parse_args()
 
     # 验证参数
@@ -229,83 +118,22 @@ def main():
     print(f"保存目录: {filename}")
     print(f"并发数: {args.concurrent}")
     print(f"下载延迟: {args.delay}秒")
-    print(f"最大重试次数: {args.max_retries}")
-    print(f"自动合并: {'否' if args.no_merge else '是'}")
     print(f"{'='*60}\n")
 
     # 获取下载目录路径
     download_dir = os.path.join(os.path.dirname(__file__), filename)
 
-    # 步骤1: 下载
+    # 开始下载
     print("开始下载...\n")
     download_m3u8(args.m3u8_url, filename, args.concurrent, args.delay)
 
     print(f"\n{'='*60}")
-    print("初始下载完成!")
+    print("✅ 下载完成!")
+    print(f"文件保存在: {download_dir}")
     print(f"{'='*60}\n")
-
-    # 步骤2: 校验
-    print("开始校验下载结果...")
-    is_complete, validation_result = validate_downloads(download_dir)
-
-    # 步骤3: 重试（如果需要）
-    if not is_complete:
-        failed_urls = validation_result.get('failed_urls', {})
-        if failed_urls:
-            print(f"\n发现 {len(failed_urls)} 个失败文件，开始重试...")
-            retry_success = retry_failed_downloads(
-                download_dir,
-                failed_urls,
-                args.m3u8_url,
-                filename,
-                args.concurrent,
-                args.delay,
-                args.max_retries
-            )
-
-            if retry_success:
-                is_complete = True
-            else:
-                # 保存失败文件日志
-                _, final_result = validate_downloads(download_dir)
-                final_failed = final_result.get('failed_urls', {})
-                if final_failed:
-                    save_failed_files_log(download_dir, final_failed)
-
-    # 步骤4: 合并（如果完成且未禁用）
-    if is_complete and not args.no_merge:
-        print(f"\n{'='*60}")
-        print("开始合并为MP4...")
-        print(f"{'='*60}\n")
-
-        merge_success = merge_ts_files(download_dir)
-
-        if merge_success:
-            print(f"\n{'='*60}")
-            print("✅ 全部完成!")
-            print(f"文件保存在: {download_dir}")
-            print(f"{'='*60}\n")
-        else:
-            print(f"\n{'='*60}")
-            print("⚠️  合并失败，但文件已下载完成")
-            print(f"文件保存在: {download_dir}")
-            print(f"{'='*60}\n")
-            print("可以手动合并:")
-            print(f"  python merge_to_mp4.py {filename}")
-    elif is_complete:
-        print(f"\n{'='*60}")
-        print("✅ 下载完成!")
-        print(f"文件保存在: {download_dir}")
-        print(f"{'='*60}\n")
-        print("下一步操作:")
-        print(f"  合并为MP4: python merge_to_mp4.py {filename}")
-    else:
-        print(f"\n{'='*60}")
-        print("❌ 下载未完成")
-        print(f"文件保存在: {download_dir}")
-        print(f"{'='*60}\n")
-        print("部分文件下载失败，请查看 failed_files.txt")
-        sys.exit(1)
+    print("下一步操作:")
+    print(f"  校验下载: python validate_downloads.py {filename}")
+    print(f"  合并为MP4: python merge_to_mp4.py {filename}")
 
 
 if __name__ == "__main__":
