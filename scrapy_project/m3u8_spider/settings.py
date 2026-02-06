@@ -94,3 +94,11 @@ FILES_STORE = "downloads"
 
 # 使用自定义 LogFormatter，配合 spider.log_pipeline_items 控制是否打印 pipeline item 日志
 LOG_FORMATTER = "m3u8_spider.logformatter.M3U8LogFormatter"
+
+# 日志级别（可由入口脚本通过 settings.set 覆盖）
+LOG_LEVEL = "DEBUG"
+
+# 当入口脚本设置 M3U8_LOG_FILE 时，M3U8FileLogExtension 会为该 run 添加文件日志（控制台+文件双输出）
+EXTENSIONS = {
+    "m3u8_spider.extensions.M3U8FileLogExtension": 0,
+}
