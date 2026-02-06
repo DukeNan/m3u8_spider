@@ -7,9 +7,9 @@ M3U8下载文件校验脚本
 from __future__ import annotations
 
 import json
-import os
 import sys
 from dataclasses import dataclass, field
+from pathlib import Path
 
 
 # ---------------------------------------------------------------------------
@@ -87,7 +87,7 @@ class PlaylistParser:
         """解析 m3u8 文件，提取所有片段信息"""
         segments: list[SegmentInfo] = []
 
-        if not os.path.exists(playlist_path):
+        if not Path(playlist_path).exists():
             print(f"错误: 找不到playlist.txt文件: {playlist_path}")
             return segments
 
@@ -102,7 +102,7 @@ class PlaylistParser:
 
             # 如果是 URL
             if line.startswith("http") or (not line.startswith("#") and "." in line):
-                filename = os.path.basename(line)
+                filename = Path(line).name
                 if not filename or not filename.endswith(".ts"):
                     filename = f"segment_{segment_index:05d}.ts"
 
@@ -137,8 +137,8 @@ class ContentLengthLoader:
         Returns:
             文件名到 Content-Length 的映射
         """
-        path = os.path.join(directory, cls._FILENAME)
-        if not os.path.exists(path):
+        path = Path(directory) / cls._FILENAME
+        if not path.exists():
             return {}
         try:
             with open(path, "r", encoding="utf-8") as f:
@@ -155,7 +155,7 @@ class ContentLengthLoader:
 def _get_file_size(filepath: str) -> int:
     """获取文件大小（字节）"""
     try:
-        return os.path.getsize(filepath)
+        return Path(filepath).stat().st_size
     except OSError:
         return 0
 
@@ -172,7 +172,7 @@ def _validate_content_length(filepath: str, expected_length: int) -> bool:
         文件大小是否完整
     """
     try:
-        actual_size = os.path.getsize(filepath)
+        actual_size = Path(filepath).stat().st_size
 
         # 如果实际大小小于预期，则不完整
         if actual_size < expected_length:
@@ -196,7 +196,7 @@ class DownloadValidator:
     """
 
     def __init__(self, directory: str) -> None:
-        self._directory = os.path.abspath(directory)
+        self._directory = str(Path(directory).resolve())
 
     def validate(self) -> ValidationResult | None:
         """
@@ -206,8 +206,8 @@ class DownloadValidator:
         if not self._ensure_directory():
             return None
 
-        playlist_path = os.path.join(self._directory, "playlist.txt")
-        if not os.path.exists(playlist_path):
+        playlist_path = Path(self._directory) / "playlist.txt"
+        if not playlist_path.exists():
             print(f"错误: 找不到playlist.txt文件: {playlist_path}")
             return None
 
@@ -237,18 +237,16 @@ class DownloadValidator:
         return result
 
     def _ensure_directory(self) -> bool:
-        if not os.path.isdir(self._directory):
+        if not Path(self._directory).is_dir():
             print(f"错误: 目录不存在: {self._directory}")
             return False
         return True
 
     def _collect_ts_files(self) -> list[str]:
         files = []
-        for name in os.listdir(self._directory):
-            if name.endswith(".ts"):
-                path = os.path.join(self._directory, name)
-                if os.path.isfile(path):
-                    files.append(name)
+        for p in Path(self._directory).iterdir():
+            if p.suffix == ".ts" and p.is_file():
+                files.append(p.name)
         return files
 
     def _compute_file_sizes(
@@ -257,8 +255,8 @@ class DownloadValidator:
         file_sizes: dict[str, int] = {}
         total = 0
         for name in ts_files:
-            path = os.path.join(self._directory, name)
-            size = _get_file_size(path)
+            path = Path(self._directory) / name
+            size = _get_file_size(str(path))
             file_sizes[name] = size
             total += size
         return file_sizes, total
@@ -279,7 +277,7 @@ class DownloadValidator:
         zero_size: list[str] = []
         incomplete: list[str] = []
         for name in sorted(ts_files):
-            path = os.path.join(self._directory, name)
+            path = str(Path(self._directory) / name)
             size = file_sizes[name]
             if size == 0:
                 zero_size.append(name)

@@ -3,8 +3,8 @@
 # Don't forget to add your pipeline to the ITEM_PIPELINES setting
 # See: https://docs.scrapy.org/en/latest/topics/item-pipeline.html
 
-import os
 import json
+from pathlib import Path
 from urllib.parse import urlparse
 from scrapy import Request
 from scrapy.pipelines.files import FilesPipeline
@@ -41,15 +41,13 @@ class M3U8FilePipeline(FilesPipeline):
         if hasattr(spider, "download_directory"):
             self.download_directory = spider.download_directory
             # 确保目录存在
-            os.makedirs(self.download_directory, exist_ok=True)
+            Path(self.download_directory).mkdir(parents=True, exist_ok=True)
             # 设置store的basedir为下载目录
             self.store.basedir = self.download_directory
 
             # 加载已有的Content-Length信息（如果存在）
-            content_lengths_file = os.path.join(
-                self.download_directory, "content_lengths.json"
-            )
-            if os.path.exists(content_lengths_file):
+            content_lengths_file = Path(self.download_directory) / "content_lengths.json"
+            if content_lengths_file.exists():
                 try:
                     with open(content_lengths_file, "r", encoding="utf-8") as f:
                         self.content_lengths = json.load(f)
@@ -59,9 +57,7 @@ class M3U8FilePipeline(FilesPipeline):
     def close_spider(self, spider):
         """爬虫关闭时调用，保存Content-Length信息"""
         if self.download_directory and self.content_lengths:
-            content_lengths_file = os.path.join(
-                self.download_directory, "content_lengths.json"
-            )
+            content_lengths_file = Path(self.download_directory) / "content_lengths.json"
             try:
                 with open(content_lengths_file, "w", encoding="utf-8") as f:
                     json.dump(self.content_lengths, f, indent=2, ensure_ascii=False)
@@ -80,9 +76,8 @@ class M3U8FilePipeline(FilesPipeline):
         else:
             # 从URL提取文件名
             url_path = urlparse(request.url).path
-            filename = (
-                os.path.basename(url_path)
-                or f"segment_{item.get('segment_index', 0) if item else 0}.ts"
+            filename = Path(url_path).name or (
+                f"segment_{item.get('segment_index', 0) if item else 0}.ts"
             )
 
         return filename
@@ -100,7 +95,7 @@ class M3U8FilePipeline(FilesPipeline):
                 file_path = result["path"]
                 # 构建完整路径
                 if self.download_directory:
-                    full_path = os.path.join(self.download_directory, file_path)
+                    full_path = str(Path(self.download_directory) / file_path)
                 else:
                     full_path = file_path
 

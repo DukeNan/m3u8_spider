@@ -5,9 +5,9 @@ M3U8 下载爬虫：下载并解析 M3U8 播放列表，产出 TS 片段与密�
 from __future__ import annotations
 
 import json
-import os
 import re
 from dataclasses import dataclass
+from pathlib import Path
 from urllib.parse import urljoin, urlparse
 
 import m3u8
@@ -90,7 +90,10 @@ class UrlResolver:
 
     def __init__(self, base_url: str, m3u8_path: str) -> None:
         self._base_url = base_url.rstrip("/")
-        self._base_path = os.path.dirname(urlparse(m3u8_path).path) or ""
+        parsed_path = urlparse(m3u8_path).path
+        self._base_path = (
+            "" if not parsed_path or parsed_path == "/" else str(Path(parsed_path).parent)
+        )
 
     def resolve(self, uri: str) -> str:
         """
@@ -219,12 +222,12 @@ class M3U8DownloaderSpider(scrapy.Spider):
 
         # 创建下载目录（相对于项目根目录；项目根 = scrapy_project 的父目录）
         project_root = self._project_root()
-        self.download_directory = os.path.join(project_root, filename)
-        os.makedirs(self.download_directory, exist_ok=True)
+        self.download_directory = str(Path(project_root) / filename)
+        Path(self.download_directory).mkdir(parents=True, exist_ok=True)
 
         parsed = urlparse(m3u8_url)
         self._base_url = f"{parsed.scheme}://{parsed.netloc}"
-        self._base_path = os.path.dirname(parsed.path) or ""
+        self._base_path = str(Path(parsed.path).parent) or ""
         self._url_resolver = UrlResolver(self._base_url, parsed.path)
 
         if retry_urls:
@@ -236,10 +239,10 @@ class M3U8DownloaderSpider(scrapy.Spider):
     @staticmethod
     def _project_root() -> str:
         """当前项目根目录（main.py 所在层级）"""
-        current_dir = os.getcwd()
-        if current_dir.endswith("scrapy_project"):
-            return os.path.dirname(current_dir)
-        return current_dir
+        current_dir = Path.cwd()
+        if str(current_dir).endswith("scrapy_project"):
+            return str(current_dir.parent)
+        return str(current_dir)
 
     def start_requests(self):
         """首轮请求：重试模式直接产出片段项，否则请求 M3U8 地址。"""
@@ -279,14 +282,14 @@ class M3U8DownloaderSpider(scrapy.Spider):
 
     def _save_playlist(self, content: str) -> None:
         """将 M3U8 内容保存为 playlist.txt"""
-        path = os.path.join(self.download_directory, PLAYLIST_FILENAME)
+        path = Path(self.download_directory) / PLAYLIST_FILENAME
         with open(path, "w", encoding="utf-8") as f:
             f.write(content)
         self.logger.info(f"M3U8文件已保存到: {path}")
 
     def _save_encryption_info(self, info: EncryptionInfo) -> None:
         """将加密信息写入 encryption_info.json"""
-        path = os.path.join(self.download_directory, ENCRYPTION_INFO_FILENAME)
+        path = Path(self.download_directory) / ENCRYPTION_INFO_FILENAME
         with open(path, "w", encoding="utf-8") as f:
             json.dump(info.to_dict(), f, indent=2, ensure_ascii=False)
 
@@ -313,7 +316,7 @@ class M3U8DownloaderSpider(scrapy.Spider):
 
     def _save_encryption_key(self, response):
         """保存加密密钥文件"""
-        key_path = os.path.join(self.download_directory, DEFAULT_KEY_FILENAME)
+        key_path = Path(self.download_directory) / DEFAULT_KEY_FILENAME
         with open(key_path, "wb") as f:
             f.write(response.body)
         self.logger.info(f"密钥文件已保存到: {key_path}")
@@ -329,7 +332,7 @@ class M3U8DownloaderSpider(scrapy.Spider):
 
     def _segment_filename(self, segment_uri: str, index: int) -> str:
         """根据片段 URI 或索引生成保存文件名"""
-        name = os.path.basename(segment_uri)
+        name = Path(segment_uri).name
         if name and name.endswith(".ts"):
             return name
         return f"segment_{index:05d}.ts"
@@ -360,7 +363,7 @@ class M3U8DownloaderSpider(scrapy.Spider):
                 segment_url = line
             else:
                 segment_url = self._url_resolver.resolve(line)
-            filename = os.path.basename(segment_url)
+            filename = Path(segment_url).name
             if not filename or not filename.endswith(".ts"):
                 filename = f"segment_{segment_index:05d}.ts"
             yield self._build_item(segment_url, filename, segment_index)
