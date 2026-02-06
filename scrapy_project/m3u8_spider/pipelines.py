@@ -74,11 +74,17 @@ class M3U8FilePipeline(FilesPipeline):
                 # 构建完整路径
                 if self.download_directory:
                     full_path = os.path.join(self.download_directory, file_path)
-                    item['file_path'] = full_path
                 else:
-                    item['file_path'] = file_path
-                item['file_status'] = 'downloaded'
+                    full_path = file_path
+
+                # 安全地设置字段（检查字段是否在item定义中）
+                if 'file_path' in item.fields:
+                    item['file_path'] = full_path
+                if 'file_status' in item.fields:
+                    item['file_status'] = 'downloaded'
             else:
-                item['file_status'] = 'failed'
-                item['file_error'] = result
+                if 'file_status' in item.fields:
+                    item['file_status'] = 'failed'
+                if 'file_error' in item.fields:
+                    item['file_error'] = result
         return item
