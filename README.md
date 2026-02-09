@@ -306,11 +306,6 @@ m3u8_spider/
 
 ## 相关文档
 
-- **[QUICKSTART.md](QUICKSTART.md)**: 5分钟快速入门（MySQL 自动下载）
-- **[AUTO_DOWNLOAD_README.md](AUTO_DOWNLOAD_README.md)**: 完整使用手册（MySQL 集成）
-- **[TESTING.md](TESTING.md)**: 详细测试步骤和验证清单
-- **[IMPLEMENTATION_SUMMARY.md](IMPLEMENTATION_SUMMARY.md)**: 技术实现总结
-
 ## 许可证
 
 MIT License
