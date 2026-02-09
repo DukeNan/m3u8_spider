@@ -27,6 +27,14 @@ from validate_downloads import validate_downloads
 
 
 # ---------------------------------------------------------------------------
+# 常量配置
+# ---------------------------------------------------------------------------
+
+# 下载完成后的等待时间（秒）
+DOWNLOAD_COOLDOWN_SECONDS = 30
+
+
+# ---------------------------------------------------------------------------
 # 数据模型
 # ---------------------------------------------------------------------------
 
@@ -44,6 +52,7 @@ class AutoDownloadConfig:
     concurrent: int = DEFAULT_CONCURRENT
     delay: float = DEFAULT_DELAY
     batch_size: int = 1  # 每次处理的任务数
+    cooldown_seconds: int = DOWNLOAD_COOLDOWN_SECONDS  # 下载完成后的冷却时间（秒）
 
 
 @dataclass
@@ -144,6 +153,7 @@ class AutoDownloader:
         print(f"并发数: {self._config.concurrent}")
         print(f"下载延迟: {self._config.delay} 秒")
         print(f"批次大小: {self._config.batch_size}")
+        print(f"冷却时间: {self._config.cooldown_seconds} 秒")
         print(f"{sep}\n")
 
     def _main_loop(self) -> None:
@@ -181,6 +191,12 @@ class AutoDownloader:
 
                 self._process_task(task)
 
+                # 任务完成后倒计时（仅在有更多任务或将要循环检查时）
+                if self._running and self._config.cooldown_seconds > 0:
+                    self._countdown_with_progress(
+                        self._config.cooldown_seconds, "任务完成，冷却倒计时"
+                    )
+
             # 短暂延迟后继续
             if self._running:
                 print(f"\n⏳ 等待 {self._config.check_interval} 秒后继续...")
@@ -192,6 +208,44 @@ class AutoDownloader:
             if not self._running:
                 break
             time.sleep(1)
+
+    def _countdown_with_progress(self, seconds: int, description: str = "等待中") -> None:
+        """
+        带进度条的倒计时
+
+        Args:
+            seconds: 倒计时秒数
+            description: 描述文字
+        """
+        print(f"\n⏱️  {description}: {seconds} 秒")
+
+        # 使用简单的字符进度条
+        bar_length = 50  # 进度条长度
+        for remaining in range(seconds, 0, -1):
+            if not self._running:
+                print("\n⚠️  倒计时被中断")
+                break
+
+            # 计算进度百分比
+            progress = (seconds - remaining) / seconds
+            filled_length = int(bar_length * progress)
+            bar = "█" * filled_length + "░" * (bar_length - filled_length)
+
+            # 打印进度条（使用 \r 覆盖同一行）
+            elapsed = seconds - remaining
+            print(
+                f"\r⏱️  [{bar}] {elapsed}/{seconds}s (剩余 {remaining}s)",
+                end="",
+                flush=True,
+            )
+
+            time.sleep(1)
+
+        if self._running:
+            # 完成时显示满进度条
+            bar = "█" * bar_length
+            print(f"\r⏱️  [{bar}] {seconds}/{seconds}s (完成)     ")
+            print("✅ 等待完成，继续下一个任务\n")
 
     def _process_task(self, task: DownloadTask) -> None:
         """处理单个下载任务"""
@@ -284,6 +338,7 @@ def create_auto_downloader(
     check_interval: int = 60,
     concurrent: int = DEFAULT_CONCURRENT,
     delay: float = DEFAULT_DELAY,
+    cooldown_seconds: int = DOWNLOAD_COOLDOWN_SECONDS,
 ) -> AutoDownloader:
     """
     创建自动下载器实例
@@ -297,6 +352,7 @@ def create_auto_downloader(
         check_interval: 检查间隔（秒）
         concurrent: 并发数
         delay: 下载延迟（秒）
+        cooldown_seconds: 下载完成后的冷却时间（秒）
 
     Returns:
         AutoDownloader 实例
@@ -310,5 +366,6 @@ def create_auto_downloader(
         check_interval=check_interval,
         concurrent=concurrent,
         delay=delay,
+        cooldown_seconds=cooldown_seconds,
     )
     return AutoDownloader(config)

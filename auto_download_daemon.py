@@ -16,7 +16,7 @@ from dotenv import load_dotenv
 # 添加项目根目录到 sys.path
 sys.path.insert(0, str(Path(__file__).parent))
 
-from auto_downloader import create_auto_downloader
+from auto_downloader import create_auto_downloader, DOWNLOAD_COOLDOWN_SECONDS
 from main import DEFAULT_CONCURRENT, DEFAULT_DELAY
 
 
@@ -77,6 +77,9 @@ def load_config_from_env() -> dict[str, any]:
         os.getenv("DEFAULT_CONCURRENT", str(DEFAULT_CONCURRENT))
     )
     config["DEFAULT_DELAY"] = float(os.getenv("DEFAULT_DELAY", str(DEFAULT_DELAY)))
+    config["DOWNLOAD_COOLDOWN_SECONDS"] = int(
+        os.getenv("DOWNLOAD_COOLDOWN_SECONDS", str(DOWNLOAD_COOLDOWN_SECONDS))
+    )
 
     return config
 
@@ -118,6 +121,11 @@ def parse_args() -> argparse.Namespace:
         type=int,
         help="检查间隔（秒）（默认: 从配置文件读取，或 60）",
     )
+    parser.add_argument(
+        "--cooldown",
+        type=int,
+        help=f"下载完成后的冷却时间（秒）（默认: 从配置文件读取，或 {DOWNLOAD_COOLDOWN_SECONDS}）",
+    )
     return parser.parse_args()
 
 
@@ -153,6 +161,11 @@ def main() -> None:
         if args.check_interval is not None
         else config["DOWNLOAD_CHECK_INTERVAL"]
     )
+    cooldown_seconds = (
+        args.cooldown
+        if args.cooldown is not None
+        else config["DOWNLOAD_COOLDOWN_SECONDS"]
+    )
 
     # 创建并启动自动下载器
     try:
@@ -165,6 +178,7 @@ def main() -> None:
             check_interval=check_interval,
             concurrent=concurrent,
             delay=delay,
+            cooldown_seconds=cooldown_seconds,
         )
         downloader.run()
     except KeyboardInterrupt:
