@@ -10,12 +10,14 @@
 - 提供文件校验脚本，检查下载完整性
 - 提供基于 pathlib 的现代化路径处理
 - 提供 FFmpeg 合并脚本，将 TS 文件合并为 MP4
+- **🆕 MySQL 数据库集成**: 支持从数据库自动读取任务、批量下载、状态管理
 
 ## 环境要求
 
 - Python 3.10+
 - uv (虚拟环境管理工具)
 - ffmpeg (用于合并视频，可选)
+- MySQL 5.7+ (用于自动下载功能，可选)
 
 ## 安装
 
@@ -94,6 +96,86 @@ python merge_to_mp4.py my_video
 python merge_to_mp4.py my_video output.mp4
 ```
 
+## 🆕 MySQL 自动下载功能
+
+### 4. 自动化批量下载（从数据库）
+
+本项目支持从 MySQL 数据库自动读取下载任务，实现批量自动化下载。
+
+#### 快速开始
+
+1. **配置数据库连接**
+
+```bash
+# 复制配置模板
+cp env.example .env
+
+# 编辑配置文件，填写数据库信息
+vim .env
+```
+
+`.env` 配置示例：
+```env
+MYSQL_HOST=localhost
+MYSQL_PORT=3306
+MYSQL_USER=root
+MYSQL_PASSWORD=your_password
+MYSQL_DATABASE=video_db
+DOWNLOAD_CHECK_INTERVAL=60
+```
+
+2. **准备数据库表**
+
+确保数据库中有 `movie_info` 表，包含以下关键字段：
+- `id`: 主键
+- `number`: 视频编号（用作文件名）
+- `m3u8_address`: M3U8 播放列表 URL
+- `status`: 下载状态（0=未下载，1=成功，2=失败）
+- `m3u8_update_time`: 更新时间
+
+3. **启动自动下载守护进程**
+
+```bash
+# 基本启动
+python auto_download_daemon.py
+
+# 自定义参数
+python auto_download_daemon.py --concurrent 64 --delay 0.5 --check-interval 30
+```
+
+参数说明：
+- `--concurrent`: 并发下载数（默认: 32）
+- `--delay`: 下载延迟（秒，默认: 0）
+- `--check-interval`: 检查数据库间隔（秒，默认: 60）
+
+#### 工作流程
+
+```
+查询数据库 (status=0)
+    ↓
+下载视频到 movies/<number>/
+    ↓
+自动校验完整性
+    ↓
+更新数据库状态 (status=1或2)
+    ↓
+循环处理下一个任务
+```
+
+#### 状态说明
+
+| status | 含义 | 说明 |
+|--------|------|------|
+| 0 | 未下载 | 等待处理的任务 |
+| 1 | 下载成功 | 下载完整且校验通过 |
+| 2 | 下载失败 | 下载失败或校验不通过 |
+
+#### 详细文档
+
+- **[QUICKSTART.md](QUICKSTART.md)**: 5分钟快速入门指南
+- **[AUTO_DOWNLOAD_README.md](AUTO_DOWNLOAD_README.md)**: 完整使用手册（500+ 行）
+- **[TESTING.md](TESTING.md)**: 详细测试步骤（400+ 行）
+
 ## 项目结构
 
 ```
@@ -111,11 +193,18 @@ m3u8_spider/
 │       └── spiders/         # 爬虫目录
 │           ├── __init__.py
 │           └── m3u8_downloader.py  # M3U8 下载爬虫
+├── main.py                  # 主入口（单个下载）
 ├── validate_downloads.py    # 校验脚本
 ├── merge_to_mp4.py         # FFmpeg 合并脚本
-├── main.py                  # 主入口
+├── db_manager.py           # 🆕 数据库管理模块
+├── auto_downloader.py      # 🆕 自动下载协调器
+├── auto_download_daemon.py # 🆕 守护进程入口
+├── env.example             # 🆕 环境变量模板
 ├── pyproject.toml           # 项目配置与依赖
-└── README.md                # 使用说明
+├── README.md                # 使用说明（本文件）
+├── QUICKSTART.md            # 🆕 快速入门指南
+├── AUTO_DOWNLOAD_README.md  # 🆕 自动下载完整手册
+└── TESTING.md               # 🆕 测试指南
 ```
 
 ## 目录结构
@@ -142,6 +231,8 @@ m3u8_spider/
 
 ## 工作流程
 
+### 单个下载模式
+
 1. **下载阶段**：
    - 解析 M3U8 文件，提取所有 TS 片段 URL
    - 在 `movies/` 下创建目录并保存文件
@@ -157,6 +248,25 @@ m3u8_spider/
    - 按顺序读取所有 TS 文件
    - 使用 FFmpeg 合并为单个 MP4 文件
    - 输出到 `mp4/` 目录
+
+### 自动下载模式（MySQL 集成）
+
+1. **初始化**：
+   - 加载数据库配置（`.env`）
+   - 连接 MySQL 数据库
+   - 启动守护进程
+
+2. **主循环**：
+   - 查询 `status=0` 的记录
+   - 调用下载模块（复用 `main.py`）
+   - 自动校验完整性（复用 `validate_downloads.py`）
+   - 更新数据库状态和时间戳
+
+3. **优雅退出**：
+   - 捕获 Ctrl+C 信号
+   - 完成当前任务
+   - 打印统计信息
+   - 关闭数据库连接
 
 ## 注意事项
 
@@ -181,6 +291,25 @@ m3u8_spider/
 - 检查网络连接是否稳定
 - 查看 Scrapy 日志了解失败原因
 - 重新运行下载命令
+
+### 数据库连接失败（自动下载模式）
+- 检查 `.env` 文件配置是否正确
+- 确认 MySQL 服务正在运行
+- 验证数据库用户名和密码
+- 检查防火墙设置
+
+### 自动下载任务未执行
+- 确认数据库中有 `status=0` 的记录
+- 检查 `m3u8_address` 字段不为空
+- 查看守护进程日志输出
+- 验证数据库表结构是否正确
+
+## 相关文档
+
+- **[QUICKSTART.md](QUICKSTART.md)**: 5分钟快速入门（MySQL 自动下载）
+- **[AUTO_DOWNLOAD_README.md](AUTO_DOWNLOAD_README.md)**: 完整使用手册（MySQL 集成）
+- **[TESTING.md](TESTING.md)**: 详细测试步骤和验证清单
+- **[IMPLEMENTATION_SUMMARY.md](IMPLEMENTATION_SUMMARY.md)**: 技术实现总结
 
 ## 许可证
 

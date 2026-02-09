@@ -9,6 +9,8 @@ dependencies = [
     "m3u8>=3.5.0",
     "requests>=2.31.0",
     "ruff>=0.15.0",
+    "pymysql>=1.1.0",
+    "python-dotenv>=1.0.0",
 ]
 
 [tool.pyright]

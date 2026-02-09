@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Overview
 
-This is a Python-based M3U8 video downloader that uses the Scrapy framework to download HLS (HTTP Live Streaming) video segments from M3U8 playlist files. The project follows a three-phase workflow: download, validate, and merge.
+This is a Python-based M3U8 video downloader that uses the Scrapy framework to download HLS (HTTP Live Streaming) video segments from M3U8 playlist files. The project supports two modes: **manual single downloads** via CLI and **automated batch downloads** via MySQL database integration. It follows a three-phase workflow: download, validate, and merge.
 
 ## Directory Structure
 
@@ -44,6 +44,16 @@ python merge_to_mp4.py <directory_or_video_name> [output.mp4]
 - Pass `my_video` to merge from `movies/my_video` to `mp4/my_video.mp4`
 - Pass custom output filename like `output.mp4` to save as `mp4/output.mp4`
 
+### Auto Download Daemon (MySQL Integration)
+```bash
+python auto_download_daemon.py [--concurrent <num>] [--delay <seconds>] [--check-interval <seconds>]
+```
+- Reads download tasks from MySQL database (`movie_info` table)
+- Automatically downloads videos with `status=0`
+- Updates status to `1` (success) or `2` (failed) after validation
+- Requires `.env` file with database credentials
+- Use `Ctrl+C` to gracefully stop the daemon
+
 ## Code Style
 
 - **Path handling**: Use `pathlib.Path` instead of `os.path` for all file operations
@@ -59,31 +69,56 @@ python merge_to_mp4.py <directory_or_video_name> [output.mp4]
 
 ## Architecture
 
-The project is organized into two main parts: the Scrapy framework for downloading and standalone utilities for post-processing.
+The project is organized into three main parts: the Scrapy framework for downloading, standalone utilities for post-processing, and MySQL database integration for automated batch processing.
 
 ### Entry Points
 
-1. **`main.py`** - Primary entry point that:
+1. **`main.py`** - Primary entry point for single downloads:
    - Parses CLI arguments (URL, filename, concurrency, delay)
    - Configures Scrapy settings (changes working directory to `scrapy_project/`)
    - Creates download directories under `movies/` and log directories under `logs/`
    - Uses Scrapy's `M3U8_LOG_FILE` setting for log output
    - Spawns `M3U8DownloaderSpider` with `download_directory` parameter
    - Uses function-based architecture: `_parse_args()`, `_run_scrapy()`, `_print_header()`, `_print_footer()`
+   - **Can be called programmatically** by `auto_downloader.py` for batch processing
 
-2. **`validate_downloads.py`** - Validation utility that:
+2. **`validate_downloads.py`** - Validation utility:
    - Uses `_resolve_directory()` helper to resolve video names to `movies/<name>`
    - Reads `playlist.txt` for expected segment list
    - Compares against actual downloaded files
    - Reports missing/empty files
    - Uses `pathlib.Path` for all file operations
+   - **Can be called programmatically** by `auto_downloader.py`
 
-3. **`merge_to_mp4.py`** - FFmpeg wrapper that:
+3. **`merge_to_mp4.py`** - FFmpeg wrapper:
    - Uses `_resolve_directory()` helper to resolve video names to `movies/<name>`
    - Creates ordered file list from downloaded TS segments
    - Uses FFmpeg to concatenate into MP4
    - Outputs to `mp4/` directory by default
    - Uses `pathlib.Path` for all file operations
+
+4. **`auto_download_daemon.py`** - Automated batch download daemon:
+   - Loads configuration from `.env` file (MySQL credentials, check interval)
+   - Parses CLI arguments for overriding defaults
+   - Creates and runs `AutoDownloader` instance
+   - Displays real-time progress and statistics
+
+5. **`auto_downloader.py`** - Download coordinator:
+   - Manages the automated download workflow
+   - Fetches tasks from database via `db_manager.py`
+   - Calls `main._run_scrapy()` for downloading
+   - Calls `validate_downloads.validate_downloads()` for validation
+   - Updates database status based on validation results
+   - Handles graceful shutdown (Ctrl+C)
+   - Maintains download statistics
+
+6. **`db_manager.py`** - Database management layer:
+   - `DatabaseManager` class for MySQL operations
+   - `get_pending_tasks()`: Query tasks with `status=0`
+   - `update_task_status()`: Update task status and timestamp
+   - `get_statistics()`: Get download statistics
+   - Connection pooling and auto-reconnect
+   - Error handling and retry logic
 
 ### Scrapy Project (`scrapy_project/`)
 
@@ -125,6 +160,8 @@ Both handle:
 
 ## Data Flow
 
+### Manual Single Download Mode
+
 1. User runs `main.py` with M3U8 URL and filename
 2. `main.py` creates download directory under `movies/<filename>/`
 3. `main.py` creates log directory under `logs/`
@@ -138,8 +175,28 @@ Both handle:
 11. User runs validation script to verify completeness
 12. User runs merge script to create MP4 in `mp4/` directory
 
+### Automated Batch Download Mode (MySQL Integration)
+
+1. User configures database credentials in `.env` file
+2. User starts daemon: `python auto_download_daemon.py`
+3. `auto_download_daemon.py` loads config and creates `AutoDownloader`
+4. `AutoDownloader` connects to MySQL database via `DatabaseManager`
+5. Main loop begins:
+   - Query `movie_info` table for records with `status=0`
+   - For each task:
+     - Extract `number` (used as filename) and `m3u8_address`
+     - Create `DownloadConfig` with task data
+     - Call `main._run_scrapy(config)` to download
+     - Call `validate_downloads()` to verify
+     - Update database: `status=1` (success) or `status=2` (failed)
+     - Update `m3u8_update_time` timestamp
+   - Sleep for configured interval
+   - Repeat until interrupted (Ctrl+C)
+6. On shutdown: close database connection, print statistics, exit gracefully
+
 ## Important Notes
 
+### General
 - Default download directory is `movies/` at project root
 - Default log directory is `logs/` at project root
 - Default MP4 output directory is `mp4/` at project root
@@ -150,3 +207,31 @@ Both handle:
 - When modifying the spider, remember that `download_directory` is an absolute path
 - The `m3u8` library requires the base M3U8 URI for proper relative URL resolution
 - Use `pathlib.Path` for all file operations, only use `os` for `chdir()` and `getcwd()`
+
+### MySQL Integration
+- Configuration is loaded from `.env` file (not tracked in git)
+- Use `env.example` as template for creating `.env`
+- Database table `movie_info` must have these fields:
+  - `id`: Primary key
+  - `number`: Video identifier (used as filename)
+  - `m3u8_address`: M3U8 URL to download
+  - `status`: Download status (0=pending, 1=success, 2=failed)
+  - `m3u8_update_time`: Timestamp of last update
+- The daemon uses `number` field as the download directory name
+- Downloads are saved to `movies/<number>/`
+- Logs are saved to `logs/<number>.log`
+- The daemon continues running until manually stopped (Ctrl+C)
+- Failed tasks (status=2) can be reset to 0 for retry
+- The `auto_downloader.py` module reuses `main._run_scrapy()` and `validate_downloads()` functions
+
+### Dependencies
+- Core: `scrapy`, `m3u8`, `requests`
+- MySQL integration: `pymysql`, `python-dotenv`
+- Optional: `ffmpeg` (for merging to MP4)
+
+### Documentation
+- `README.md`: General usage guide
+- `QUICKSTART.md`: 5-minute quick start for MySQL integration
+- `AUTO_DOWNLOAD_README.md`: Complete MySQL integration manual (500+ lines)
+- `TESTING.md`: Testing and validation guide (400+ lines)
+- `IMPLEMENTATION_SUMMARY.md`: Technical implementation details
