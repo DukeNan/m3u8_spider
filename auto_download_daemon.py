@@ -10,15 +10,21 @@ import argparse
 import os
 import sys
 from pathlib import Path
+from typing import Any
 
 from dotenv import load_dotenv
 
 # 添加项目根目录到 sys.path
 sys.path.insert(0, str(Path(__file__).parent))
 
-from auto_downloader import create_auto_downloader, DOWNLOAD_COOLDOWN_SECONDS
-from logger_config import get_logger
-from main import DEFAULT_CONCURRENT, DEFAULT_DELAY
+from constants import (
+    DEFAULT_CONCURRENT,
+    DEFAULT_DELAY,
+    DOWNLOAD_COOLDOWN_SECONDS,
+)
+
+from utils.auto_downloader import create_auto_downloader
+from utils.logger import get_logger
 
 # 初始化 logger
 logger = get_logger(__name__)
@@ -29,7 +35,7 @@ logger = get_logger(__name__)
 # ---------------------------------------------------------------------------
 
 
-def load_config_from_env() -> dict[str, any]:
+def load_config_from_env() -> dict[str, Any]:
     """
     从环境变量加载配置
 

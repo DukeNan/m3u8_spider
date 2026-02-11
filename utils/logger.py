@@ -11,20 +11,11 @@ import os
 import sys
 from pathlib import Path
 
-
-# ---------------------------------------------------------------------------
-# 常量配置
-# ---------------------------------------------------------------------------
-
-# 默认日志级别
-DEFAULT_LOG_LEVEL = "INFO"
-
-# 日志目录
-LOGS_DIR = "logs"
-
-# 日志格式
-LOG_FORMAT = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-LOG_DATE_FORMAT = "%Y-%m-%d %H:%M:%S"
+from constants import (
+    DEFAULT_LOG_LEVEL,
+    LOG_DATE_FORMAT,
+    LOG_FORMAT,
+)
 
 
 # ---------------------------------------------------------------------------

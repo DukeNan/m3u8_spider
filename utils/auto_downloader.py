@@ -13,18 +13,18 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 
-# 添加项目根目录到 sys.path
-sys.path.insert(0, str(Path(__file__).parent))
+# 添加项目根目录到 sys.path（utils 的父目录）
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from db_manager import DatabaseManager, DownloadTask
-from main import (
-    DownloadConfig,
-    _run_scrapy,
+from constants import (
     DEFAULT_CONCURRENT,
     DEFAULT_DELAY,
+    DOWNLOAD_COOLDOWN_SECONDS,
     INVALID_FILENAME_CHARS,
 )
-from logger_config import get_logger
+from utils.db_manager import DatabaseManager, DownloadTask
+from utils.logger import get_logger
+from utils.scrapy_manager import DownloadConfig, run_scrapy
 from scrapy.crawler import CrawlerRunner
 from scrapy.utils.project import get_project_settings
 from twisted.internet import reactor
@@ -33,14 +33,6 @@ from validate_downloads import validate_downloads
 
 # 初始化 logger
 logger = get_logger(__name__)
-
-
-# ---------------------------------------------------------------------------
-# 常量配置
-# ---------------------------------------------------------------------------
-
-# 下载完成后的等待时间（秒）
-DOWNLOAD_COOLDOWN_SECONDS = 30
 
 
 # ---------------------------------------------------------------------------
@@ -119,7 +111,7 @@ class AutoDownloader:
         )
         self._stats = DownloadStats()
         self._running = True
-        self._project_root = Path(__file__).resolve().parent
+        self._project_root = Path(__file__).resolve().parent.parent
 
         # 创建 CrawlerRunner 实例（用于多次调用）
         settings = get_project_settings()
@@ -298,7 +290,7 @@ class AutoDownloader:
 
             # 2. 执行下载（使用 runner 支持多次调用）
             logger.info(f"⬇️  开始下载: {filename}")
-            _run_scrapy(download_config, runner=self._runner)
+            run_scrapy(download_config, runner=self._runner)
             logger.info(f"✅ 下载完成: {filename}")
 
             # 3. 校验完整性
