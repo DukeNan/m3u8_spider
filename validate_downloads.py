@@ -11,6 +11,11 @@ import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from logger_config import get_logger
+
+# 初始化 logger
+logger = get_logger(__name__)
+
 
 # ---------------------------------------------------------------------------
 # 常量
@@ -107,7 +112,7 @@ class PlaylistParser:
         segments: list[SegmentInfo] = []
 
         if not Path(playlist_path).exists():
-            print(f"错误: 找不到playlist.txt文件: {playlist_path}")
+            logger.error(f"错误: 找不到playlist.txt文件: {playlist_path}")
             return segments
 
         content = PlaylistParser._read_file(playlist_path)
@@ -227,7 +232,7 @@ class DownloadValidator:
 
         playlist_path = Path(self._directory) / "playlist.txt"
         if not playlist_path.exists():
-            print(f"错误: 找不到playlist.txt文件: {playlist_path}")
+            logger.error(f"错误: 找不到playlist.txt文件: {playlist_path}")
             return None
 
         expected_segments = PlaylistParser.parse(playlist_path)
@@ -257,7 +262,7 @@ class DownloadValidator:
 
     def _ensure_directory(self) -> bool:
         if not Path(self._directory).is_dir():
-            print(f"错误: 目录不存在: {self._directory}")
+            logger.error(f"错误: 目录不存在: {self._directory}")
             return False
         return True
 
@@ -340,28 +345,28 @@ def format_size(size_bytes: int) -> str:
 
 def print_validation_report(result: ValidationResult) -> None:
     """显示统计信息与校验结论（原有打印逻辑）"""
-    print("\n文件统计:")
-    print(f"  预期文件数量: {result.expected_count}")
-    print(f"  实际文件数量: {result.actual_count}")
+    logger.info("\n文件统计:")
+    logger.info(f"  预期文件数量: {result.expected_count}")
+    logger.info(f"  实际文件数量: {result.actual_count}")
 
     if result.is_complete:
-        print("\n✅ 校验通过: 所有文件已完整下载")
+        logger.info("\n✅ 校验通过: 所有文件已完整下载")
     else:
         total_failed = len(result.failed_files)
-        print(f"\n❌ 校验失败: 发现 {total_failed} 个失败文件")
-        print("  失败文件类型统计:")
-        print(f"    - 缺失: {len(result.missing_files)} 个")
-        print(f"    - 空文件: {len(result.zero_size_files)} 个")
-        print(f"    - 不完整: {len(result.incomplete_files)} 个")
+        logger.error(f"\n❌ 校验失败: 发现 {total_failed} 个失败文件")
+        logger.error("  失败文件类型统计:")
+        logger.error(f"    - 缺失: {len(result.missing_files)} 个")
+        logger.error(f"    - 空文件: {len(result.zero_size_files)} 个")
+        logger.error(f"    - 不完整: {len(result.incomplete_files)} 个")
 
         failed_sorted = result.failed_files
         if failed_sorted:
-            print("\n  前十个失败的文件名:")
+            logger.error("\n  前十个失败的文件名:")
             for i, filename in enumerate(failed_sorted[:10], 1):
-                print(f"    {i}. {filename}")
+                logger.error(f"    {i}. {filename}")
             if len(failed_sorted) > 10:
-                print(f"    ... 还有 {len(failed_sorted) - 10} 个失败文件")
-    print()
+                logger.error(f"    ... 还有 {len(failed_sorted) - 10} 个失败文件")
+    logger.info("")
 
 
 # ---------------------------------------------------------------------------
@@ -385,9 +390,9 @@ def validate_downloads(directory: str) -> tuple[bool, dict]:
 def main() -> None:
     """主函数"""
     if len(sys.argv) < 2:
-        print("用法: python validate_downloads.py <目录路径或视频名>")
-        print("示例: python validate_downloads.py my_video   # 默认校验 movies/my_video")
-        print("      python validate_downloads.py ./my_video")
+        logger.error("用法: python validate_downloads.py <目录路径或视频名>")
+        logger.error("示例: python validate_downloads.py my_video   # 默认校验 movies/my_video")
+        logger.error("      python validate_downloads.py ./my_video")
         sys.exit(1)
 
     directory = _resolve_directory(sys.argv[1])

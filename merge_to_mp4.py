@@ -13,6 +13,11 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
+from logger_config import get_logger
+
+# 初始化 logger
+logger = get_logger(__name__)
+
 
 # ---------------------------------------------------------------------------
 # 常量与数据模型
@@ -98,11 +103,11 @@ class FFmpegChecker:
     @staticmethod
     def print_install_help() -> None:
         """打印安装 ffmpeg 的提示"""
-        print("错误: 未找到ffmpeg，请先安装ffmpeg")
-        print("安装方法:")
-        print("  macOS: brew install ffmpeg")
-        print("  Ubuntu/Debian: sudo apt-get install ffmpeg")
-        print("  Windows: 从 https://ffmpeg.org/download.html 下载")
+        logger.error("错误: 未找到ffmpeg，请先安装ffmpeg")
+        logger.error("安装方法:")
+        logger.error("  macOS: brew install ffmpeg")
+        logger.error("  Ubuntu/Debian: sudo apt-get install ffmpeg")
+        logger.error("  Windows: 从 https://ffmpeg.org/download.html 下载")
 
 
 def _ts_sort_key(filepath: str) -> int | str:
@@ -122,7 +127,7 @@ class TSFileCollector:
         """获取目录中所有 ts 文件（绝对路径），按文件名数字排序"""
         dir_path = Path(directory)
         if not dir_path.is_dir():
-            print(f"错误: 目录不存在: {directory}")
+            logger.error(f"错误: 目录不存在: {directory}")
             return []
 
         paths = []
@@ -216,11 +221,11 @@ class MP4Merger:
                 return False
             self._print_encryption_detected(encryption)
         else:
-            print("✅ 未检测到加密，将使用普通方式合并")
+            logger.info("✅ 未检测到加密，将使用普通方式合并")
 
         ts_files = TSFileCollector.collect(self._directory)
         if not ts_files:
-            print(f"错误: 在目录 {self._directory} 中未找到.ts文件")
+            logger.error(f"错误: 在目录 {self._directory} 中未找到.ts文件")
             return False
 
         self._print_merge_header(ts_files)
@@ -229,7 +234,7 @@ class MP4Merger:
         Path(output_path).parent.mkdir(parents=True, exist_ok=True)
         if not self._confirm_overwrite(output_path):
             return False
-        print(f"输出文件: {output_path}\n")
+        logger.info(f"输出文件: {output_path}\n")
 
         temp_files: list[str] = []
         try:
@@ -240,17 +245,17 @@ class MP4Merger:
             self._cleanup(temp_files)
             return self._print_success(output_path)
         except subprocess.CalledProcessError as e:
-            print(f"错误: ffmpeg执行失败: {e}")
+            logger.error(f"错误: ffmpeg执行失败: {e}")
             self._cleanup(temp_files)
             return False
         except Exception as e:
-            print(f"错误: {e}")
+            logger.error(f"错误: {e}")
             self._cleanup(temp_files)
             return False
 
     def _ensure_directory(self) -> bool:
         if not Path(self._directory).is_dir():
-            print(f"错误: 目录不存在: {self._directory}")
+            logger.error(f"错误: 目录不存在: {self._directory}")
             return False
         return True
 
@@ -263,22 +268,22 @@ class MP4Merger:
     def _check_encryption_key(self, encryption: EncryptionInfo) -> bool:
         key_path = Path(self._directory) / encryption.key_file
         if not key_path.exists():
-            print(f"错误: 密钥文件不存在: {key_path}")
-            print("提示: 请确保在下载时已正确下载密钥文件")
+            logger.error(f"错误: 密钥文件不存在: {key_path}")
+            logger.error("提示: 请确保在下载时已正确下载密钥文件")
             return False
         return True
 
     def _print_encryption_detected(self, encryption: EncryptionInfo) -> None:
-        print("⚠️  检测到加密的m3u8文件")
-        print(f"   加密方法: {encryption.method}")
-        print(f"   密钥文件: {encryption.key_file}")
+        logger.warning("⚠️  检测到加密的m3u8文件")
+        logger.warning(f"   加密方法: {encryption.method}")
+        logger.warning(f"   密钥文件: {encryption.key_file}")
 
     def _print_merge_header(self, ts_files: list[str]) -> None:
         sep = "=" * 60
-        print(f"\n{sep}")
-        print(f"合并目录: {self._directory}")
-        print(f"找到 {len(ts_files)} 个TS文件")
-        print(f"{sep}\n")
+        logger.info(f"\n{sep}")
+        logger.info(f"合并目录: {self._directory}")
+        logger.info(f"找到 {len(ts_files)} 个TS文件")
+        logger.info(f"{sep}\n")
 
     def _resolve_output_path(self) -> str:
         project_root = Path(__file__).resolve().parent
@@ -295,7 +300,7 @@ class MP4Merger:
             return True
         response = input(f"输出文件已存在: {output_path}\n是否覆盖? (y/n): ")
         if response.lower() != "y":
-            print("已取消操作")
+            logger.info("已取消操作")
             return False
         return True
 
@@ -306,9 +311,9 @@ class MP4Merger:
         encryption: EncryptionInfo,
     ) -> list[str]:
         """加密文件：使用 FFmpeg HLS demuxer；返回需清理的临时文件列表"""
-        print("使用FFmpeg HLS demuxer处理加密文件...")
+        logger.info("使用FFmpeg HLS demuxer处理加密文件...")
         temp_m3u8 = _create_temp_m3u8(self._directory, ts_files, encryption)
-        print(f"创建临时M3U8文件: {temp_m3u8}")
+        logger.info(f"创建临时M3U8文件: {temp_m3u8}")
 
         cmd = [
             "ffmpeg",
@@ -317,8 +322,8 @@ class MP4Merger:
             "-c", "copy",
             "-y", output_path,
         ]
-        print("\n开始合并加密文件...")
-        print(f"命令: {' '.join(cmd)}\n")
+        logger.info("\n开始合并加密文件...")
+        logger.info(f"命令: {' '.join(cmd)}\n")
         subprocess.run(cmd, check=True, capture_output=False, text=True)
         return [temp_m3u8]
 
@@ -328,9 +333,9 @@ class MP4Merger:
         output_path: str,
     ) -> list[str]:
         """未加密：使用 concat demuxer；返回需清理的临时文件列表"""
-        print("使用concat demuxer合并文件...")
+        logger.info("使用concat demuxer合并文件...")
         list_file = _create_file_list(ts_files, FILE_LIST_NAME)
-        print(f"创建文件列表: {list_file}")
+        logger.info(f"创建文件列表: {list_file}")
 
         cmd = [
             "ffmpeg",
@@ -340,8 +345,8 @@ class MP4Merger:
             "-c", "copy",
             "-y", output_path,
         ]
-        print("\n开始合并...")
-        print(f"命令: {' '.join(cmd)}\n")
+        logger.info("\n开始合并...")
+        logger.info(f"命令: {' '.join(cmd)}\n")
         subprocess.run(cmd, check=True, capture_output=False, text=True)
         return [list_file]
 
@@ -355,16 +360,16 @@ class MP4Merger:
     def _print_success(self, output_path: str) -> bool:
         path = Path(output_path)
         if not path.exists():
-            print("错误: 合并完成但输出文件不存在")
+            logger.error("错误: 合并完成但输出文件不存在")
             return False
         file_size = path.stat().st_size
         size_mb = file_size / (1024 * 1024)
         sep = "=" * 60
-        print(f"\n{sep}")
-        print("✅ 合并成功!")
-        print(f"输出文件: {output_path}")
-        print(f"文件大小: {size_mb:.2f} MB")
-        print(f"{sep}\n")
+        logger.info(f"\n{sep}")
+        logger.info("✅ 合并成功!")
+        logger.info(f"输出文件: {output_path}")
+        logger.info(f"文件大小: {size_mb:.2f} MB")
+        logger.info(f"{sep}\n")
         return True
 
 
@@ -381,10 +386,10 @@ def merge_ts_files(directory: str, output_file: str | None = None) -> bool:
 def main() -> None:
     """主函数"""
     if len(sys.argv) < 2:
-        print("用法: python merge_to_mp4.py <目录路径或视频名> [输出文件名]")
-        print("示例: python merge_to_mp4.py my_video           # 默认合并 movies/my_video，输出到 mp4/my_video.mp4")
-        print("      python merge_to_mp4.py my_video output.mp4  # 输出到 mp4/output.mp4")
-        print("      python merge_to_mp4.py ./my_video output.mp4")
+        logger.error("用法: python merge_to_mp4.py <目录路径或视频名> [输出文件名]")
+        logger.error("示例: python merge_to_mp4.py my_video           # 默认合并 movies/my_video，输出到 mp4/my_video.mp4")
+        logger.error("      python merge_to_mp4.py my_video output.mp4  # 输出到 mp4/output.mp4")
+        logger.error("      python merge_to_mp4.py ./my_video output.mp4")
         sys.exit(1)
 
     directory = _resolve_directory(sys.argv[1])

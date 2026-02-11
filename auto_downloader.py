@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import signal
 import sys
+import threading
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -23,7 +24,15 @@ from main import (
     DEFAULT_DELAY,
     INVALID_FILENAME_CHARS,
 )
+from logger_config import get_logger
+from scrapy.crawler import CrawlerRunner
+from scrapy.utils.project import get_project_settings
+from twisted.internet import reactor
+from tqdm import tqdm
 from validate_downloads import validate_downloads
+
+# 初始化 logger
+logger = get_logger(__name__)
 
 
 # ---------------------------------------------------------------------------
@@ -76,16 +85,16 @@ class DownloadStats:
     def print_summary(self) -> None:
         """打印统计摘要"""
         sep = "=" * 60
-        print(f"\n{sep}")
-        print("📊 下载统计")
-        print(sep)
-        print(f"总处理数: {self.total_processed}")
-        print(f"成功: {self.success_count}")
-        print(f"失败: {self.failed_count}")
+        logger.info(f"\n{sep}")
+        logger.info("📊 下载统计")
+        logger.info(sep)
+        logger.info(f"总处理数: {self.total_processed}")
+        logger.info(f"成功: {self.success_count}")
+        logger.info(f"失败: {self.failed_count}")
         if self.total_processed > 0:
             success_rate = (self.success_count / self.total_processed) * 100
-            print(f"成功率: {success_rate:.1f}%")
-        print(f"{sep}\n")
+            logger.info(f"成功率: {success_rate:.1f}%")
+        logger.info(f"{sep}\n")
 
 
 # ---------------------------------------------------------------------------
@@ -112,28 +121,42 @@ class AutoDownloader:
         self._running = True
         self._project_root = Path(__file__).resolve().parent
 
+        # 创建 CrawlerRunner 实例（用于多次调用）
+        settings = get_project_settings()
+        self._runner = CrawlerRunner(settings)
+        self._reactor_thread: threading.Thread | None = None
+        self._reactor_started = False
+
         # 注册信号处理器
         signal.signal(signal.SIGINT, self._signal_handler)
         signal.signal(signal.SIGTERM, self._signal_handler)
 
     def _signal_handler(self, signum, frame) -> None:
         """处理中断信号（Ctrl+C）"""
-        print("\n\n⚠️  收到中断信号，正在优雅退出...")
-        self._running = False
+        # 第一次收到信号：设置标志，准备优雅退出
+        if self._running:
+            logger.warning("\n\n⚠️  收到中断信号，正在优雅退出...")
+            self._running = False
+        else:
+            # 第二次收到信号：强制退出
+            logger.error("\n\n⚠️  再次收到中断信号，强制退出...")
+            sys.exit(1)
 
     def run(self) -> None:
         """主循环：守护进程模式"""
-        print("🚀 自动下载器启动")
+        logger.info("🚀 自动下载器启动")
         self._print_config()
 
         if not self._db_manager.connect():
-            print("❌ 无法连接数据库，退出")
+            logger.error("❌ 无法连接数据库，退出")
             sys.exit(1)
 
         try:
+            # 启动 reactor 线程（用于支持多次调用）
+            self._start_reactor_thread()
             self._main_loop()
         except Exception as e:
-            print(f"❌ 发生未预期的错误: {e}")
+            logger.error(f"❌ 发生未预期的错误: {e}")
             import traceback
 
             traceback.print_exc()
@@ -143,25 +166,25 @@ class AutoDownloader:
     def _print_config(self) -> None:
         """打印配置信息"""
         sep = "=" * 60
-        print(f"\n{sep}")
-        print("配置信息")
-        print(sep)
-        print(
+        logger.info(f"\n{sep}")
+        logger.info("配置信息")
+        logger.info(sep)
+        logger.info(
             f"数据库: {self._config.db_host}:{self._config.db_port}/{self._config.db_database}"
         )
-        print(f"检查间隔: {self._config.check_interval} 秒")
-        print(f"并发数: {self._config.concurrent}")
-        print(f"下载延迟: {self._config.delay} 秒")
-        print(f"批次大小: {self._config.batch_size}")
-        print(f"冷却时间: {self._config.cooldown_seconds} 秒")
-        print(f"{sep}\n")
+        logger.info(f"检查间隔: {self._config.check_interval} 秒")
+        logger.info(f"并发数: {self._config.concurrent}")
+        logger.info(f"下载延迟: {self._config.delay} 秒")
+        logger.info(f"批次大小: {self._config.batch_size}")
+        logger.info(f"冷却时间: {self._config.cooldown_seconds} 秒")
+        logger.info(f"{sep}\n")
 
     def _main_loop(self) -> None:
         """主循环：持续检查并处理任务"""
         while self._running:
             # 获取数据库统计
             db_stats = self._db_manager.get_statistics()
-            print(
+            logger.info(
                 f"\n📊 数据库状态: 总计={db_stats['total']}, "
                 f"待下载={db_stats['pending']}, "
                 f"成功={db_stats['success']}, "
@@ -170,7 +193,7 @@ class AutoDownloader:
 
             # 检查是否有待下载任务
             if db_stats["pending"] == 0:
-                print(
+                logger.info(
                     f"✅ 没有待下载任务，{self._config.check_interval} 秒后再次检查..."
                 )
                 self._sleep_with_interrupt(self._config.check_interval)
@@ -179,14 +202,15 @@ class AutoDownloader:
             # 获取待下载任务
             tasks = self._db_manager.get_pending_tasks(limit=self._config.batch_size)
             if not tasks:
-                print(f"⚠️  未能获取任务，{self._config.check_interval} 秒后重试...")
+                logger.warning(f"⚠️  未能获取任务，{self._config.check_interval} 秒后重试...")
                 self._sleep_with_interrupt(self._config.check_interval)
                 continue
 
             # 处理每个任务
+            has_cooldown = False
             for task in tasks:
                 if not self._running:
-                    print("⚠️  收到停止信号，中断任务处理")
+                    logger.warning("⚠️  收到停止信号，中断任务处理")
                     break
 
                 self._process_task(task)
@@ -196,69 +220,71 @@ class AutoDownloader:
                     self._countdown_with_progress(
                         self._config.cooldown_seconds, "任务完成，冷却倒计时"
                     )
+                    has_cooldown = True
 
-            # 短暂延迟后继续
-            if self._running:
-                print(f"\n⏳ 等待 {self._config.check_interval} 秒后继续...")
+            # 如果已经执行了冷却倒计时，则直接进入下一轮检查，不再额外等待
+            # 只有在没有冷却时间时，才使用 check_interval 作为任务之间的间隔
+            if self._running and not has_cooldown:
+                logger.info(f"\n⏳ 等待 {self._config.check_interval} 秒后继续...")
                 self._sleep_with_interrupt(self._config.check_interval)
 
     def _sleep_with_interrupt(self, seconds: int) -> None:
         """可中断的睡眠"""
-        for _ in range(seconds):
-            if not self._running:
-                break
-            time.sleep(1)
+        try:
+            for _ in range(seconds):
+                if not self._running:
+                    break
+                time.sleep(1)
+        except KeyboardInterrupt:
+            # 如果用户在等待期间按 CTRL+C，立即退出
+            self._running = False
+            raise
 
     def _countdown_with_progress(self, seconds: int, description: str = "等待中") -> None:
         """
-        带进度条的倒计时
+        带进度条的倒计时（使用 tqdm）
 
         Args:
             seconds: 倒计时秒数
             description: 描述文字
         """
-        print(f"\n⏱️  {description}: {seconds} 秒")
+        logger.info(f"\n⏱️  {description}: {seconds} 秒")
 
-        # 使用简单的字符进度条
-        bar_length = 50  # 进度条长度
-        for remaining in range(seconds, 0, -1):
-            if not self._running:
-                print("\n⚠️  倒计时被中断")
-                break
-
-            # 计算进度百分比
-            progress = (seconds - remaining) / seconds
-            filled_length = int(bar_length * progress)
-            bar = "█" * filled_length + "░" * (bar_length - filled_length)
-
-            # 打印进度条（使用 \r 覆盖同一行）
-            elapsed = seconds - remaining
-            print(
-                f"\r⏱️  [{bar}] {elapsed}/{seconds}s (剩余 {remaining}s)",
-                end="",
-                flush=True,
-            )
-
-            time.sleep(1)
+        # 使用 tqdm 创建进度条
+        try:
+            with tqdm(
+                total=seconds,
+                desc=f"⏱️  {description}",
+                unit="秒",
+                bar_format="{l_bar}{bar}| {n_fmt}/{total_fmt}秒 [{elapsed}<{remaining}]",
+            ) as pbar:
+                for _ in range(seconds):
+                    if not self._running:
+                        tqdm.write("⚠️  倒计时被中断")
+                        break
+                    time.sleep(1)
+                    pbar.update(1)
+        except KeyboardInterrupt:
+            # 如果用户在倒计时期间按 CTRL+C，立即退出
+            tqdm.write("⚠️  倒计时被中断")
+            self._running = False
+            raise
 
         if self._running:
-            # 完成时显示满进度条
-            bar = "█" * bar_length
-            print(f"\r⏱️  [{bar}] {seconds}/{seconds}s (完成)     ")
-            print("✅ 等待完成，继续下一个任务\n")
+            logger.info("✅ 等待完成，继续下一个任务\n")
 
     def _process_task(self, task: DownloadTask) -> None:
         """处理单个下载任务"""
         sep = "=" * 60
-        print(f"\n{sep}")
-        print("📥 开始处理任务")
-        print(sep)
-        print(f"ID: {task.id}")
-        print(f"编号: {task.number}")
-        print(f"标题: {task.title or 'N/A'}")
-        print(f"提供商: {task.provider or 'N/A'}")
-        print(f"M3U8: {task.m3u8_address}")
-        print(f"{sep}\n")
+        logger.info(f"\n{sep}")
+        logger.info("📥 开始处理任务")
+        logger.info(sep)
+        logger.info(f"ID: {task.id}")
+        logger.info(f"编号: {task.number}")
+        logger.info(f"标题: {task.title or 'N/A'}")
+        logger.info(f"提供商: {task.provider or 'N/A'}")
+        logger.info(f"M3U8: {task.m3u8_address}")
+        logger.info(f"{sep}\n")
 
         try:
             # 1. 创建下载配置
@@ -270,36 +296,36 @@ class AutoDownloader:
                 delay=self._config.delay,
             )
 
-            # 2. 执行下载
-            print(f"⬇️  开始下载: {filename}")
-            _run_scrapy(download_config)
-            print(f"✅ 下载完成: {filename}")
+            # 2. 执行下载（使用 runner 支持多次调用）
+            logger.info(f"⬇️  开始下载: {filename}")
+            _run_scrapy(download_config, runner=self._runner)
+            logger.info(f"✅ 下载完成: {filename}")
 
             # 3. 校验完整性
-            print(f"\n🔍 开始校验: {filename}")
+            logger.info(f"\n🔍 开始校验: {filename}")
             download_dir = str(download_config.download_dir)
             is_complete, result = validate_downloads(download_dir)
 
             # 4. 更新数据库状态
             if is_complete:
-                print(f"✅ 校验通过: {filename}")
+                logger.info(f"✅ 校验通过: {filename}")
                 self._db_manager.update_task_status(
                     task.id, status=1, update_m3u8_time=True
                 )
                 self._stats.record_success()
-                print("✅ 已更新数据库状态: status=1 (成功)")
+                logger.info("✅ 已更新数据库状态: status=1 (成功)")
             else:
-                print(f"❌ 校验失败: {filename}")
+                logger.error(f"❌ 校验失败: {filename}")
                 failed_count = len(result.get("failed_files", []))
-                print(f"   失败文件数: {failed_count}")
+                logger.error(f"   失败文件数: {failed_count}")
                 self._db_manager.update_task_status(
                     task.id, status=2, update_m3u8_time=True
                 )
                 self._stats.record_failure()
-                print("⚠️  已更新数据库状态: status=2 (失败)")
+                logger.warning("⚠️  已更新数据库状态: status=2 (失败)")
 
         except Exception as e:
-            print(f"❌ 处理任务失败 (ID={task.id}): {e}")
+            logger.error(f"❌ 处理任务失败 (ID={task.id}): {e}")
             import traceback
 
             traceback.print_exc()
@@ -307,7 +333,7 @@ class AutoDownloader:
             # 更新为失败状态
             self._db_manager.update_task_status(task.id, status=2)
             self._stats.record_failure()
-            print("⚠️  已更新数据库状态: status=2 (异常失败)")
+            logger.warning("⚠️  已更新数据库状态: status=2 (异常失败)")
 
     def _sanitize_filename(self, filename: str) -> str:
         """清理文件名（移除不合法字符）"""
@@ -316,12 +342,44 @@ class AutoDownloader:
             name = name.replace(char, "_")
         return name
 
+    def _start_reactor_thread(self) -> None:
+        """在单独的线程中启动 Twisted reactor"""
+        if self._reactor_started:
+            return
+
+        def run_reactor():
+            """在单独线程中运行 reactor"""
+            if not reactor.running:  # type: ignore[attr-defined]
+                reactor.run(installSignalHandlers=False)  # type: ignore[attr-defined]
+
+        self._reactor_thread = threading.Thread(target=run_reactor, daemon=True)
+        self._reactor_thread.start()
+        self._reactor_started = True
+
+        # 等待 reactor 启动
+        import time
+        max_wait = 5
+        for _ in range(max_wait * 10):  # 每 0.1 秒检查一次
+            if reactor.running:  # type: ignore[attr-defined]
+                break
+            time.sleep(0.1)
+        else:
+            logger.warning("⚠️  Reactor 启动超时，但继续执行...")
+
+    def _stop_reactor(self) -> None:
+        """停止 reactor"""
+        if reactor.running:  # type: ignore[attr-defined]
+            reactor.callFromThread(reactor.stop)  # type: ignore[attr-defined]
+            if self._reactor_thread and self._reactor_thread.is_alive():
+                self._reactor_thread.join(timeout=5)
+
     def _cleanup(self) -> None:
         """清理资源"""
-        print("\n🧹 正在清理资源...")
+        logger.info("\n🧹 正在清理资源...")
+        self._stop_reactor()
         self._db_manager.close()
         self._stats.print_summary()
-        print("👋 自动下载器已退出")
+        logger.info("👋 自动下载器已退出")
 
 
 # ---------------------------------------------------------------------------

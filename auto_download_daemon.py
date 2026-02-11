@@ -17,7 +17,11 @@ from dotenv import load_dotenv
 sys.path.insert(0, str(Path(__file__).parent))
 
 from auto_downloader import create_auto_downloader, DOWNLOAD_COOLDOWN_SECONDS
+from logger_config import get_logger
 from main import DEFAULT_CONCURRENT, DEFAULT_DELAY
+
+# 初始化 logger
+logger = get_logger(__name__)
 
 
 # ---------------------------------------------------------------------------
@@ -39,10 +43,10 @@ def load_config_from_env() -> dict[str, any]:
     env_path = Path(__file__).parent / ".env"
     if env_path.exists():
         load_dotenv(env_path)
-        print(f"✅ 已加载配置文件: {env_path}")
+        logger.info(f"✅ 已加载配置文件: {env_path}")
     else:
-        print(f"⚠️  未找到 .env 文件: {env_path}")
-        print("   将尝试从系统环境变量读取配置")
+        logger.warning(f"⚠️  未找到 .env 文件: {env_path}")
+        logger.warning("   将尝试从系统环境变量读取配置")
 
     # 必需的配置项
     required_keys = [
@@ -64,11 +68,11 @@ def load_config_from_env() -> dict[str, any]:
             config[key] = value
 
     if missing_keys:
-        print("\n❌ 缺少必需的环境变量:")
+        logger.error("\n❌ 缺少必需的环境变量:")
         for key in missing_keys:
-            print(f"   - {key}")
-        print("\n请创建 .env 文件或设置环境变量")
-        print("参考 env.example 文件")
+            logger.error(f"   - {key}")
+        logger.error("\n请创建 .env 文件或设置环境变量")
+        logger.error("参考 env.example 文件")
         raise ValueError("缺少必需的环境变量")
 
     # 可选的配置项
@@ -137,9 +141,9 @@ def parse_args() -> argparse.Namespace:
 def main() -> None:
     """主入口"""
     # 打印欢迎信息
-    print("=" * 60)
-    print("🎬 M3U8 自动下载守护进程")
-    print("=" * 60)
+    logger.info("=" * 60)
+    logger.info("🎬 M3U8 自动下载守护进程")
+    logger.info("=" * 60)
 
     # 解析命令行参数
     args = parse_args()
@@ -148,7 +152,7 @@ def main() -> None:
     try:
         config = load_config_from_env()
     except ValueError as e:
-        print(f"\n❌ 配置加载失败: {e}")
+        logger.error(f"\n❌ 配置加载失败: {e}")
         sys.exit(1)
 
     # 命令行参数覆盖配置文件
@@ -182,10 +186,10 @@ def main() -> None:
         )
         downloader.run()
     except KeyboardInterrupt:
-        print("\n\n⚠️  收到键盘中断")
+        logger.warning("\n\n⚠️  收到键盘中断")
         sys.exit(0)
     except Exception as e:
-        print(f"\n❌ 发生错误: {e}")
+        logger.error(f"\n❌ 发生错误: {e}")
         import traceback
 
         traceback.print_exc()

@@ -12,13 +12,18 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
-from scrapy.crawler import CrawlerProcess
+from scrapy.crawler import CrawlerProcess, CrawlerRunner
 from scrapy.utils.project import get_project_settings
+from twisted.internet import reactor
 
 # 添加scrapy项目路径到sys.path
 sys.path.insert(0, str(Path(__file__).parent / "scrapy_project"))
 
 from m3u8_spider.spiders.m3u8_downloader import M3U8DownloaderSpider
+from logger_config import get_logger
+
+# 初始化 logger
+logger = get_logger(__name__)
 
 
 # ---------------------------------------------------------------------------
@@ -116,12 +121,19 @@ def _parse_args(argv: list[str] | None = None) -> DownloadConfig:
             delay=args.delay,
         )
     except ValueError as e:
-        print(f"错误: {e}")
+        logger.error(f"错误: {e}")
         sys.exit(1)
 
 
-def _run_scrapy(config: DownloadConfig) -> None:
-    """运行 Scrapy：chdir、注入本 run 参数、启动爬虫、恢复 cwd。"""
+def _run_scrapy(config: DownloadConfig, runner: CrawlerRunner | None = None) -> None:
+    """
+    运行 Scrapy：chdir、注入本 run 参数、启动爬虫、恢复 cwd。
+
+    Args:
+        config: 下载配置
+        runner: 可选的 CrawlerRunner 实例（用于多次调用场景，如 auto_downloader）
+                如果提供，将使用此 runner；否则创建新的 CrawlerProcess
+    """
     original_cwd = Path.cwd()
     try:
         os.chdir(config.scrapy_project_dir)
@@ -135,15 +147,66 @@ def _run_scrapy(config: DownloadConfig) -> None:
         settings.set("DOWNLOAD_DELAY", config.delay)
         settings.set("M3U8_LOG_FILE", str(log_file))
 
-        process = CrawlerProcess(settings)
-        process.crawl(
-            M3U8DownloaderSpider,
-            m3u8_url=config.m3u8_url,
-            filename=config.sanitized_filename,
-            download_directory=str(config.download_dir),
-            retry_urls=config.retry_urls,
-        )
-        process.start()
+        if runner is not None:
+            # 使用提供的 runner（用于多次调用场景）
+            # 确保在 reactor 线程中执行
+            import threading
+            from twisted.internet import reactor as twisted_reactor
+
+            event = threading.Event()
+            exception_holder = [None]
+            deferred_holder = [None]
+
+            def run_crawl():
+                """在 reactor 线程中执行爬虫"""
+                try:
+                    deferred = runner.crawl(
+                        M3U8DownloaderSpider,
+                        m3u8_url=config.m3u8_url,
+                        filename=config.sanitized_filename,
+                        download_directory=str(config.download_dir),
+                        retry_urls=config.retry_urls,
+                    )
+                    deferred_holder[0] = deferred
+
+                    def callback(_):
+                        event.set()
+
+                    def errback(failure):
+                        exception_holder[0] = failure
+                        event.set()
+
+                    deferred.addCallbacks(callback, errback)
+                except Exception as e:
+                    exception_holder[0] = e
+                    event.set()
+
+            # 在 reactor 线程中执行
+            if twisted_reactor.running:  # type: ignore[attr-defined]
+                twisted_reactor.callFromThread(run_crawl)  # type: ignore[attr-defined]
+            else:
+                # 如果 reactor 未运行，直接执行（不应该发生）
+                run_crawl()
+
+            # 等待 deferred 完成（阻塞）
+            event.wait()
+
+            if exception_holder[0]:
+                if hasattr(exception_holder[0], 'value'):
+                    raise exception_holder[0].value
+                else:
+                    raise exception_holder[0]
+        else:
+            # 首次运行，使用 CrawlerProcess
+            process = CrawlerProcess(settings)
+            process.crawl(
+                M3U8DownloaderSpider,
+                m3u8_url=config.m3u8_url,
+                filename=config.sanitized_filename,
+                download_directory=str(config.download_dir),
+                retry_urls=config.retry_urls,
+            )
+            process.start()
     finally:
         os.chdir(original_cwd)
 
@@ -151,35 +214,35 @@ def _run_scrapy(config: DownloadConfig) -> None:
 def _print_header(config: DownloadConfig) -> None:
     """打印下载前的摘要信息。"""
     sep = "=" * 60
-    print(f"\n{sep}")
-    print("M3U8下载工具")
-    print(sep)
-    print(f"M3U8 URL: {config.m3u8_url}")
-    print(f"保存目录: {DEFAULT_BASE_DIR}/{config.sanitized_filename}")
-    print(f"日志文件: {LOGS_DIR}/{config.sanitized_filename}.log")
-    print(f"并发数: {config.concurrent}")
-    print(f"下载延迟: {config.delay}秒")
-    print(f"{sep}\n")
+    logger.info(f"\n{sep}")
+    logger.info("M3U8下载工具")
+    logger.info(sep)
+    logger.info(f"M3U8 URL: {config.m3u8_url}")
+    logger.info(f"保存目录: {DEFAULT_BASE_DIR}/{config.sanitized_filename}")
+    logger.info(f"日志文件: {LOGS_DIR}/{config.sanitized_filename}.log")
+    logger.info(f"并发数: {config.concurrent}")
+    logger.info(f"下载延迟: {config.delay}秒")
+    logger.info(f"{sep}\n")
 
 
 def _print_footer(config: DownloadConfig) -> None:
     """打印下载完成提示与下一步操作。"""
     sep = "=" * 60
     name = config.sanitized_filename
-    print(f"\n{sep}")
-    print("✅ 下载完成!")
-    print(f"文件保存在: {config.download_dir}")
-    print(f"{sep}\n")
-    print("下一步操作:")
-    print(f"  校验下载: python validate_downloads.py {name}")
-    print(f"  合并为MP4: python merge_to_mp4.py {name}")
+    logger.info(f"\n{sep}")
+    logger.info("✅ 下载完成!")
+    logger.info(f"文件保存在: {config.download_dir}")
+    logger.info(f"{sep}\n")
+    logger.info("下一步操作:")
+    logger.info(f"  校验下载: python validate_downloads.py {name}")
+    logger.info(f"  合并为MP4: python merge_to_mp4.py {name}")
 
 
 def main() -> None:
     """主入口：解析参数 → 打印摘要 → 运行 Scrapy → 打印后续步骤。"""
     config = _parse_args()
     _print_header(config)
-    print("开始下载...\n")
+    logger.info("开始下载...\n")
     _run_scrapy(config)
     _print_footer(config)
 

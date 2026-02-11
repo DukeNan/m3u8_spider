@@ -13,6 +13,11 @@ from datetime import datetime
 import pymysql
 from pymysql.cursors import DictCursor
 
+from logger_config import get_logger
+
+# 初始化 logger
+logger = get_logger(__name__)
+
 
 # ---------------------------------------------------------------------------
 # 数据模型
@@ -90,17 +95,17 @@ class DatabaseManager:
         for attempt in range(1, self._max_retries + 1):
             try:
                 self._connection = pymysql.connect(**self._config)
-                print(
+                logger.info(
                     f"✅ 数据库连接成功: {self._config['host']}:{self._config['port']}/{self._config['database']}"
                 )
                 return True
             except pymysql.Error as e:
-                print(f"❌ 数据库连接失败 (尝试 {attempt}/{self._max_retries}): {e}")
+                logger.error(f"❌ 数据库连接失败 (尝试 {attempt}/{self._max_retries}): {e}")
                 if attempt < self._max_retries:
-                    print(f"   {self._retry_delay} 秒后重试...")
+                    logger.warning(f"   {self._retry_delay} 秒后重试...")
                     time.sleep(self._retry_delay)
                 else:
-                    print("   已达到最大重试次数，放弃连接")
+                    logger.error("   已达到最大重试次数，放弃连接")
                     return False
         return False
 
@@ -109,9 +114,9 @@ class DatabaseManager:
         if self._connection:
             try:
                 self._connection.close()
-                print("✅ 数据库连接已关闭")
+                logger.info("✅ 数据库连接已关闭")
             except Exception as e:
-                print(f"⚠️  关闭数据库连接时出错: {e}")
+                logger.warning(f"⚠️  关闭数据库连接时出错: {e}")
             finally:
                 self._connection = None
 
@@ -129,7 +134,7 @@ class DatabaseManager:
             self._connection.ping(reconnect=True)
             return True
         except Exception:
-            print("⚠️  数据库连接已断开，尝试重连...")
+            logger.warning("⚠️  数据库连接已断开，尝试重连...")
             return self.connect()
 
     def get_pending_tasks(self, limit: int = 10) -> list[DownloadTask]:
@@ -170,7 +175,7 @@ class DatabaseManager:
                     tasks.append(task)
                 return tasks
         except pymysql.Error as e:
-            print(f"❌ 查询待下载任务失败: {e}")
+            logger.error(f"❌ 查询待下载任务失败: {e}")
             return []
 
     def update_task_status(
@@ -212,7 +217,7 @@ class DatabaseManager:
 
                 return cursor.rowcount > 0
         except pymysql.Error as e:
-            print(f"❌ 更新任务状态失败 (ID={task_id}): {e}")
+            logger.error(f"❌ 更新任务状态失败 (ID={task_id}): {e}")
             return False
 
     def get_task_by_id(self, task_id: int) -> DownloadTask | None:
@@ -250,7 +255,7 @@ class DatabaseManager:
                     provider=row.get("provider"),
                 )
         except pymysql.Error as e:
-            print(f"❌ 查询任务失败 (ID={task_id}): {e}")
+            logger.error(f"❌ 查询任务失败 (ID={task_id}): {e}")
             return None
 
     def get_statistics(self) -> dict[str, int]:
@@ -284,7 +289,7 @@ class DatabaseManager:
                     "failed": row["failed"] or 0,
                 }
         except pymysql.Error as e:
-            print(f"❌ 获取统计信息失败: {e}")
+            logger.error(f"❌ 获取统计信息失败: {e}")
             return {"total": 0, "pending": 0, "success": 0, "failed": 0}
 
     def __enter__(self) -> DatabaseManager:
