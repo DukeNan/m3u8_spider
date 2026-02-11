@@ -58,8 +58,6 @@ def _parse_args(argv: list[str] | None = None) -> DownloadConfig:
         sys.exit(1)
 
 
-
-
 def _print_header(config: DownloadConfig) -> None:
     """打印下载前的摘要信息。"""
     sep = "=" * 60

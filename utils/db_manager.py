@@ -100,7 +100,9 @@ class DatabaseManager:
                 )
                 return True
             except pymysql.Error as e:
-                logger.error(f"❌ 数据库连接失败 (尝试 {attempt}/{self._max_retries}): {e}")
+                logger.error(
+                    f"❌ 数据库连接失败 (尝试 {attempt}/{self._max_retries}): {e}"
+                )
                 if attempt < self._max_retries:
                     logger.warning(f"   {self._retry_delay} 秒后重试...")
                     time.sleep(self._retry_delay)

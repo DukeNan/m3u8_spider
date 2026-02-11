@@ -171,7 +171,7 @@ def _create_temp_m3u8(
             key_uri = f"file://{key_path.resolve()}"
             key_line = f'#EXT-X-KEY:METHOD={encryption_info.method},URI="{key_uri}"'
             if encryption_info.iv:
-                key_line += f',IV={encryption_info.iv}'
+                key_line += f",IV={encryption_info.iv}"
             f.write(key_line + "\n")
 
         for ts_file in ts_files:
@@ -318,10 +318,14 @@ class MP4Merger:
 
         cmd = [
             "ffmpeg",
-            "-allowed_extensions", "ALL",
-            "-i", temp_m3u8,
-            "-c", "copy",
-            "-y", output_path,
+            "-allowed_extensions",
+            "ALL",
+            "-i",
+            temp_m3u8,
+            "-c",
+            "copy",
+            "-y",
+            output_path,
         ]
         logger.info("\n开始合并加密文件...")
         logger.info(f"命令: {' '.join(cmd)}\n")
@@ -340,11 +344,16 @@ class MP4Merger:
 
         cmd = [
             "ffmpeg",
-            "-f", "concat",
-            "-safe", "0",
-            "-i", list_file,
-            "-c", "copy",
-            "-y", output_path,
+            "-f",
+            "concat",
+            "-safe",
+            "0",
+            "-i",
+            list_file,
+            "-c",
+            "copy",
+            "-y",
+            output_path,
         ]
         logger.info("\n开始合并...")
         logger.info(f"命令: {' '.join(cmd)}\n")
@@ -388,8 +397,12 @@ def main() -> None:
     """主函数"""
     if len(sys.argv) < 2:
         logger.error("用法: python merge_to_mp4.py <目录路径或视频名> [输出文件名]")
-        logger.error("示例: python merge_to_mp4.py my_video           # 默认合并 movies/my_video，输出到 mp4/my_video.mp4")
-        logger.error("      python merge_to_mp4.py my_video output.mp4  # 输出到 mp4/output.mp4")
+        logger.error(
+            "示例: python merge_to_mp4.py my_video           # 默认合并 movies/my_video，输出到 mp4/my_video.mp4"
+        )
+        logger.error(
+            "      python merge_to_mp4.py my_video output.mp4  # 输出到 mp4/output.mp4"
+        )
         logger.error("      python merge_to_mp4.py ./my_video output.mp4")
         sys.exit(1)
 

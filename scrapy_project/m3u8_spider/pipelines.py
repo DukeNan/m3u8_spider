@@ -46,7 +46,9 @@ class M3U8FilePipeline(FilesPipeline):
             self.store.basedir = self.download_directory
 
             # 加载已有的Content-Length信息（如果存在）
-            content_lengths_file = Path(self.download_directory) / "content_lengths.json"
+            content_lengths_file = (
+                Path(self.download_directory) / "content_lengths.json"
+            )
             if content_lengths_file.exists():
                 try:
                     with open(content_lengths_file, "r", encoding="utf-8") as f:
@@ -57,7 +59,9 @@ class M3U8FilePipeline(FilesPipeline):
     def close_spider(self, spider):
         """爬虫关闭时调用，保存Content-Length信息"""
         if self.download_directory and self.content_lengths:
-            content_lengths_file = Path(self.download_directory) / "content_lengths.json"
+            content_lengths_file = (
+                Path(self.download_directory) / "content_lengths.json"
+            )
             try:
                 with open(content_lengths_file, "w", encoding="utf-8") as f:
                     json.dump(self.content_lengths, f, indent=2, ensure_ascii=False)

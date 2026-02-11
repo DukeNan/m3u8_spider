@@ -13,7 +13,6 @@ from pathlib import Path
 
 from scrapy.crawler import CrawlerProcess, CrawlerRunner
 from scrapy.utils.project import get_project_settings
-from twisted.internet import reactor
 
 from constants import (
     DEFAULT_BASE_DIR,
@@ -28,8 +27,9 @@ from constants import (
 _project_root = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(_project_root / "scrapy_project"))
 
-from m3u8_spider.spiders.m3u8_downloader import M3U8DownloaderSpider
-from utils.logger import get_logger
+# 必须在 sys.path 修改后才能导入这些模块
+from m3u8_spider.spiders.m3u8_downloader import M3U8DownloaderSpider  # noqa: E402
+from utils.logger import get_logger  # noqa: E402
 
 # 初始化 logger
 logger = get_logger(__name__)
@@ -152,7 +152,7 @@ def run_scrapy(config: DownloadConfig, runner: CrawlerRunner | None = None) -> N
             event.wait()
 
             if exception_holder[0]:
-                if hasattr(exception_holder[0], 'value'):
+                if hasattr(exception_holder[0], "value"):
                     raise exception_holder[0].value
                 else:
                     raise exception_holder[0]
