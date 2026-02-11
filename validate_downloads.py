@@ -63,7 +63,11 @@ class ValidationResult:
     @property
     def failed_files(self) -> list[str]:
         """所有失败文件（缺失 + 空 + 不完整）去重后排序"""
-        s = set(self.missing_files) | set(self.zero_size_files) | set(self.incomplete_files)
+        s = (
+            set(self.missing_files)
+            | set(self.zero_size_files)
+            | set(self.incomplete_files)
+        )
         return sorted(s)
 
     @property
@@ -125,7 +129,9 @@ class PlaylistParser:
                     filename = f"segment_{segment_index:05d}.ts"
 
                 segments.append(
-                    SegmentInfo(index=segment_index, url=line, expected_filename=filename)
+                    SegmentInfo(
+                        index=segment_index, url=line, expected_filename=filename
+                    )
                 )
                 segment_index += 1
 
@@ -235,9 +241,7 @@ class DownloadValidator:
 
         file_sizes, total_size = self._compute_file_sizes(ts_files)
         missing = self._missing_filenames(expected_segments, ts_files)
-        zero_size, incomplete = self._check_sizes(
-            ts_files, file_sizes, content_lengths
-        )
+        zero_size, incomplete = self._check_sizes(ts_files, file_sizes, content_lengths)
         failed_urls = self._build_failed_urls(
             expected_segments, missing, zero_size, incomplete
         )
@@ -267,9 +271,7 @@ class DownloadValidator:
                 files.append(p.name)
         return files
 
-    def _compute_file_sizes(
-        self, ts_files: list[str]
-    ) -> tuple[dict[str, int], int]:
+    def _compute_file_sizes(self, ts_files: list[str]) -> tuple[dict[str, int], int]:
         file_sizes: dict[str, int] = {}
         total = 0
         for name in ts_files:
@@ -311,9 +313,7 @@ class DownloadValidator:
         zero_size: list[str],
         incomplete: list[str],
     ) -> dict[str, str]:
-        filename_to_url = {
-            seg.expected_filename: seg.url for seg in expected_segments
-        }
+        filename_to_url = {seg.expected_filename: seg.url for seg in expected_segments}
         failed_set = set(missing) | set(zero_size) | set(incomplete)
         return {
             name: filename_to_url[name]
@@ -385,7 +385,9 @@ def main() -> None:
     """主函数"""
     if len(sys.argv) < 2:
         logger.error("用法: python validate_downloads.py <目录路径或视频名>")
-        logger.error("示例: python validate_downloads.py my_video   # 默认校验 movies/my_video")
+        logger.error(
+            "示例: python validate_downloads.py my_video   # 默认校验 movies/my_video"
+        )
         logger.error("      python validate_downloads.py ./my_video")
         sys.exit(1)
 

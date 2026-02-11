@@ -27,7 +27,6 @@ from utils.logger import get_logger
 from utils.scrapy_manager import DownloadConfig, run_scrapy
 from scrapy.crawler import CrawlerRunner
 from scrapy.utils.project import get_project_settings
-from twisted.internet import reactor
 from tqdm import tqdm
 from validate_downloads import validate_downloads
 
@@ -113,8 +112,20 @@ class AutoDownloader:
         self._running = True
         self._project_root = Path(__file__).resolve().parent.parent
 
-        # 创建 CrawlerRunner 实例（用于多次调用）
+        # 在创建 CrawlerRunner 之前安装正确的 reactor
+        # 这必须在导入 reactor 之前完成
         settings = get_project_settings()
+        reactor_class = settings.get("TWISTED_REACTOR")
+        if reactor_class:
+            try:
+                from scrapy.utils.reactor import install_reactor
+
+                install_reactor(reactor_class, event_loop_path=None)
+            except Exception as e:
+                logger.warning(f"⚠️  无法安装指定的 reactor ({reactor_class}): {e}")
+                logger.warning("⚠️  将使用默认 reactor")
+
+        # 创建 CrawlerRunner 实例（用于多次调用）
         self._runner = CrawlerRunner(settings)
         self._reactor_thread: threading.Thread | None = None
         self._reactor_started = False
@@ -194,7 +205,9 @@ class AutoDownloader:
             # 获取待下载任务
             tasks = self._db_manager.get_pending_tasks(limit=self._config.batch_size)
             if not tasks:
-                logger.warning(f"⚠️  未能获取任务，{self._config.check_interval} 秒后重试...")
+                logger.warning(
+                    f"⚠️  未能获取任务，{self._config.check_interval} 秒后重试..."
+                )
                 self._sleep_with_interrupt(self._config.check_interval)
                 continue
 
@@ -232,7 +245,9 @@ class AutoDownloader:
             self._running = False
             raise
 
-    def _countdown_with_progress(self, seconds: int, description: str = "等待中") -> None:
+    def _countdown_with_progress(
+        self, seconds: int, description: str = "等待中"
+    ) -> None:
         """
         带进度条的倒计时（使用 tqdm）
 
@@ -341,18 +356,22 @@ class AutoDownloader:
 
         def run_reactor():
             """在单独线程中运行 reactor"""
-            if not reactor.running:  # type: ignore[attr-defined]
-                reactor.run(installSignalHandlers=False)  # type: ignore[attr-defined]
+            # 延迟导入 reactor（此时应该已经安装了正确的类型）
+            from twisted.internet import reactor as twisted_reactor
+
+            if not twisted_reactor.running:  # type: ignore[attr-defined]
+                twisted_reactor.run(installSignalHandlers=False)  # type: ignore[attr-defined]
 
         self._reactor_thread = threading.Thread(target=run_reactor, daemon=True)
         self._reactor_thread.start()
         self._reactor_started = True
 
         # 等待 reactor 启动
-        import time
+        from twisted.internet import reactor as twisted_reactor
+
         max_wait = 5
         for _ in range(max_wait * 10):  # 每 0.1 秒检查一次
-            if reactor.running:  # type: ignore[attr-defined]
+            if twisted_reactor.running:  # type: ignore[attr-defined]
                 break
             time.sleep(0.1)
         else:
@@ -360,8 +379,10 @@ class AutoDownloader:
 
     def _stop_reactor(self) -> None:
         """停止 reactor"""
-        if reactor.running:  # type: ignore[attr-defined]
-            reactor.callFromThread(reactor.stop)  # type: ignore[attr-defined]
+        from twisted.internet import reactor as twisted_reactor
+
+        if twisted_reactor.running:  # type: ignore[attr-defined]
+            twisted_reactor.callFromThread(twisted_reactor.stop)  # type: ignore[attr-defined]
             if self._reactor_thread and self._reactor_thread.is_alive():
                 self._reactor_thread.join(timeout=5)
 

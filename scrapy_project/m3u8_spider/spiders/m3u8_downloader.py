@@ -92,7 +92,9 @@ class UrlResolver:
         self._base_url = base_url.rstrip("/")
         parsed_path = urlparse(m3u8_path).path
         self._base_path = (
-            "" if not parsed_path or parsed_path == "/" else str(Path(parsed_path).parent)
+            ""
+            if not parsed_path or parsed_path == "/"
+            else str(Path(parsed_path).parent)
         )
 
     def resolve(self, uri: str) -> str:
@@ -123,7 +125,9 @@ class EncryptionDetector:
     """从 M3U8 文本或 m3u8 库的 playlist 对象检测加密信息"""
 
     @classmethod
-    def detect(cls, m3u8_content: str, playlist: object | None = None) -> EncryptionInfo:
+    def detect(
+        cls, m3u8_content: str, playlist: object | None = None
+    ) -> EncryptionInfo:
         """
         检测 m3u8 是否加密。
 
@@ -302,9 +306,7 @@ class M3U8DownloaderSpider(scrapy.Spider):
     def _log_encryption(self, info: EncryptionInfo) -> None:
         """根据加密状态打日志"""
         if info.is_encrypted:
-            self.logger.info(
-                f"⚠️  检测到加密: {info.method}, 密钥URI: {info.key_uri}"
-            )
+            self.logger.info(f"⚠️  检测到加密: {info.method}, 密钥URI: {info.key_uri}")
         else:
             self.logger.info("✅ 未检测到加密，m3u8文件为非加密格式")
 
