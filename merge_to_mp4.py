@@ -13,22 +13,23 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
-from logger_config import get_logger
+from constants import (
+    DEFAULT_BASE_DIR,
+    DEFAULT_KEY_FILE,
+    DEFAULT_MP4_DIR,
+    ENCRYPTION_INFO_NAME,
+    FILE_LIST_NAME,
+    TEMP_PLAYLIST_NAME,
+)
+from utils.logger import get_logger
 
 # 初始化 logger
 logger = get_logger(__name__)
 
 
 # ---------------------------------------------------------------------------
-# 常量与数据模型
+# 数据模型
 # ---------------------------------------------------------------------------
-
-TEMP_PLAYLIST_NAME = "temp_playlist.m3u8"
-FILE_LIST_NAME = "file_list.txt"
-ENCRYPTION_INFO_NAME = "encryption_info.json"
-DEFAULT_KEY_FILE = "encryption.key"
-DEFAULT_BASE_DIR = "movies"
-DEFAULT_MP4_DIR = "mp4"
 
 
 def _resolve_directory(arg: str) -> str:

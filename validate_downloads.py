@@ -11,17 +11,11 @@ import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from logger_config import get_logger
+from constants import DEFAULT_BASE_DIR
+from utils.logger import get_logger
 
 # 初始化 logger
 logger = get_logger(__name__)
-
-
-# ---------------------------------------------------------------------------
-# 常量
-# ---------------------------------------------------------------------------
-
-DEFAULT_BASE_DIR = "movies"
 
 
 def _resolve_directory(arg: str) -> str:
