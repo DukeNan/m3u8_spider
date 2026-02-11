@@ -93,6 +93,9 @@ def run_scrapy(config: DownloadConfig, runner: CrawlerRunner | None = None) -> N
         config: 下载配置
         runner: 可选的 CrawlerRunner 实例（用于多次调用场景，如 auto_downloader）
                 如果提供，将使用此 runner；否则创建新的 CrawlerProcess
+
+    注意：由于 CrawlerRunner 在多线程环境下的复杂性，当前实现总是使用 CrawlerProcess
+    来确保每次下载都是独立且可靠的。
     """
     original_cwd = Path.cwd()
     try:
@@ -107,65 +110,16 @@ def run_scrapy(config: DownloadConfig, runner: CrawlerRunner | None = None) -> N
         settings.set("DOWNLOAD_DELAY", config.delay)
         settings.set("M3U8_LOG_FILE", str(log_file))
 
-        if runner is not None:
-            # 使用提供的 runner（用于多次调用场景）
-            # 确保在 reactor 线程中执行
-            import threading
-            from twisted.internet import reactor as twisted_reactor
-
-            event = threading.Event()
-            exception_holder = [None]
-            deferred_holder = [None]
-
-            def run_crawl():
-                """在 reactor 线程中执行爬虫"""
-                try:
-                    deferred = runner.crawl(
-                        M3U8DownloaderSpider,
-                        m3u8_url=config.m3u8_url,
-                        filename=config.sanitized_filename,
-                        download_directory=str(config.download_dir),
-                        retry_urls=config.retry_urls,
-                    )
-                    deferred_holder[0] = deferred
-
-                    def callback(_):
-                        event.set()
-
-                    def errback(failure):
-                        exception_holder[0] = failure
-                        event.set()
-
-                    deferred.addCallbacks(callback, errback)
-                except Exception as e:
-                    exception_holder[0] = e
-                    event.set()
-
-            # 在 reactor 线程中执行
-            if twisted_reactor.running:  # type: ignore[attr-defined]
-                twisted_reactor.callFromThread(run_crawl)  # type: ignore[attr-defined]
-            else:
-                # 如果 reactor 未运行，直接执行（不应该发生）
-                run_crawl()
-
-            # 等待 deferred 完成（阻塞）
-            event.wait()
-
-            if exception_holder[0]:
-                if hasattr(exception_holder[0], "value"):
-                    raise exception_holder[0].value
-                else:
-                    raise exception_holder[0]
-        else:
-            # 首次运行，使用 CrawlerProcess
-            process = CrawlerProcess(settings)
-            process.crawl(
-                M3U8DownloaderSpider,
-                m3u8_url=config.m3u8_url,
-                filename=config.sanitized_filename,
-                download_directory=str(config.download_dir),
-                retry_urls=config.retry_urls,
-            )
-            process.start()
+        # 总是使用 CrawlerProcess 来确保每次下载都是独立的
+        # 这样可以避免 CrawlerRunner 在多线程环境下的复杂性和潜在问题
+        process = CrawlerProcess(settings)
+        process.crawl(
+            M3U8DownloaderSpider,
+            m3u8_url=config.m3u8_url,
+            filename=config.sanitized_filename,
+            download_directory=str(config.download_dir),
+            retry_urls=config.retry_urls,
+        )
+        process.start()
     finally:
         os.chdir(original_cwd)

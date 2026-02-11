@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import signal
 import sys
-import threading
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -25,8 +24,6 @@ from constants import (
 from utils.db_manager import DatabaseManager, DownloadTask
 from utils.logger import get_logger
 from utils.scrapy_manager import DownloadConfig, run_scrapy
-from scrapy.crawler import CrawlerRunner
-from scrapy.utils.project import get_project_settings
 from tqdm import tqdm
 from validate_downloads import validate_downloads
 
@@ -112,24 +109,6 @@ class AutoDownloader:
         self._running = True
         self._project_root = Path(__file__).resolve().parent.parent
 
-        # 在创建 CrawlerRunner 之前安装正确的 reactor
-        # 这必须在导入 reactor 之前完成
-        settings = get_project_settings()
-        reactor_class = settings.get("TWISTED_REACTOR")
-        if reactor_class:
-            try:
-                from scrapy.utils.reactor import install_reactor
-
-                install_reactor(reactor_class, event_loop_path=None)
-            except Exception as e:
-                logger.warning(f"⚠️  无法安装指定的 reactor ({reactor_class}): {e}")
-                logger.warning("⚠️  将使用默认 reactor")
-
-        # 创建 CrawlerRunner 实例（用于多次调用）
-        self._runner = CrawlerRunner(settings)
-        self._reactor_thread: threading.Thread | None = None
-        self._reactor_started = False
-
         # 注册信号处理器
         signal.signal(signal.SIGINT, self._signal_handler)
         signal.signal(signal.SIGTERM, self._signal_handler)
@@ -155,8 +134,6 @@ class AutoDownloader:
             sys.exit(1)
 
         try:
-            # 启动 reactor 线程（用于支持多次调用）
-            self._start_reactor_thread()
             self._main_loop()
         except Exception as e:
             logger.error(f"❌ 发生未预期的错误: {e}")
@@ -303,9 +280,9 @@ class AutoDownloader:
                 delay=self._config.delay,
             )
 
-            # 2. 执行下载（使用 runner 支持多次调用）
+            # 2. 执行下载
             logger.info(f"⬇️  开始下载: {filename}")
-            run_scrapy(download_config, runner=self._runner)
+            run_scrapy(download_config)
             logger.info(f"✅ 下载完成: {filename}")
 
             # 3. 校验完整性
@@ -349,47 +326,9 @@ class AutoDownloader:
             name = name.replace(char, "_")
         return name
 
-    def _start_reactor_thread(self) -> None:
-        """在单独的线程中启动 Twisted reactor"""
-        if self._reactor_started:
-            return
-
-        def run_reactor():
-            """在单独线程中运行 reactor"""
-            # 延迟导入 reactor（此时应该已经安装了正确的类型）
-            from twisted.internet import reactor as twisted_reactor
-
-            if not twisted_reactor.running:  # type: ignore[attr-defined]
-                twisted_reactor.run(installSignalHandlers=False)  # type: ignore[attr-defined]
-
-        self._reactor_thread = threading.Thread(target=run_reactor, daemon=True)
-        self._reactor_thread.start()
-        self._reactor_started = True
-
-        # 等待 reactor 启动
-        from twisted.internet import reactor as twisted_reactor
-
-        max_wait = 5
-        for _ in range(max_wait * 10):  # 每 0.1 秒检查一次
-            if twisted_reactor.running:  # type: ignore[attr-defined]
-                break
-            time.sleep(0.1)
-        else:
-            logger.warning("⚠️  Reactor 启动超时，但继续执行...")
-
-    def _stop_reactor(self) -> None:
-        """停止 reactor"""
-        from twisted.internet import reactor as twisted_reactor
-
-        if twisted_reactor.running:  # type: ignore[attr-defined]
-            twisted_reactor.callFromThread(twisted_reactor.stop)  # type: ignore[attr-defined]
-            if self._reactor_thread and self._reactor_thread.is_alive():
-                self._reactor_thread.join(timeout=5)
-
     def _cleanup(self) -> None:
         """清理资源"""
         logger.info("\n🧹 正在清理资源...")
-        self._stop_reactor()
         self._db_manager.close()
         self._stats.print_summary()
         logger.info("👋 自动下载器已退出")
