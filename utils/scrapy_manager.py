@@ -94,8 +94,9 @@ def run_scrapy(config: DownloadConfig, runner: CrawlerRunner | None = None) -> N
         runner: 可选的 CrawlerRunner 实例（用于多次调用场景，如 auto_downloader）
                 如果提供，将使用此 runner；否则创建新的 CrawlerProcess
 
-    注意：由于 CrawlerRunner 在多线程环境下的复杂性，当前实现总是使用 CrawlerProcess
-    来确保每次下载都是独立且可靠的。
+    注意：
+    - 如果提供 runner，则使用 CrawlerRunner 在已运行的 reactor 中运行爬虫
+    - 如果未提供 runner，则使用 CrawlerProcess 创建新的 reactor（单次下载场景）
     """
     original_cwd = Path.cwd()
     try:
@@ -110,9 +111,9 @@ def run_scrapy(config: DownloadConfig, runner: CrawlerRunner | None = None) -> N
         settings.set("DOWNLOAD_DELAY", config.delay)
         settings.set("M3U8_LOG_FILE", str(log_file))
 
-        # 总是使用 CrawlerProcess 来确保每次下载都是独立的
-        # 这样可以避免 CrawlerRunner 在多线程环境下的复杂性和潜在问题
-        process = CrawlerProcess(settings)
+        # 使用 CrawlerProcess（单次下载场景）
+        # 创建新的 reactor 并运行
+        process = CrawlerProcess(settings, install_root_handler=False)
         process.crawl(
             M3U8DownloaderSpider,
             m3u8_url=config.m3u8_url,
@@ -120,6 +121,49 @@ def run_scrapy(config: DownloadConfig, runner: CrawlerRunner | None = None) -> N
             download_directory=str(config.download_dir),
             retry_urls=config.retry_urls,
         )
-        process.start()
+        # 使用 start() 方法，它会阻塞直到所有爬虫和下载完成
+        # stop_after_crawl=True (默认值) 确保等待所有请求（包括 pipeline 中的下载请求）完成
+        # 这包括等待所有文件下载完成，而不仅仅是 spider 的 yield 完成
+        process.start(stop_after_crawl=True)
     finally:
         os.chdir(original_cwd)
+
+
+def run_scrapy_subprocess(config: DownloadConfig) -> None:
+    """
+    使用子进程运行 Scrapy（用于多次调用场景，如 auto_downloader）
+
+    Args:
+        config: 下载配置
+
+    注意：
+    - 每次下载都在独立的子进程中运行，避免 reactor 重启问题
+    - 子进程会调用 main.py 来执行下载
+    """
+    import subprocess
+
+    # 构建 main.py 的命令行参数
+    main_py = config.project_root / "main.py"
+    cmd = [
+        sys.executable,
+        str(main_py),
+        config.m3u8_url,
+        config.sanitized_filename,
+        "--concurrent",
+        str(config.concurrent),
+        "--delay",
+        str(config.delay),
+    ]
+
+    logger.info(f"启动子进程下载: {' '.join(cmd)}")
+
+    # 运行子进程并等待完成
+    result = subprocess.run(
+        cmd,
+        cwd=str(config.project_root),
+        capture_output=False,
+        text=True,
+    )
+
+    if result.returncode != 0:
+        raise RuntimeError(f"子进程下载失败，返回码: {result.returncode}")

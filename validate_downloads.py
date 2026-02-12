@@ -339,15 +339,15 @@ def format_size(size_bytes: int) -> str:
 
 def print_validation_report(result: ValidationResult) -> None:
     """显示统计信息与校验结论（原有打印逻辑）"""
-    logger.info("\n文件统计:")
+    logger.info("文件统计:")
     logger.info(f"  预期文件数量: {result.expected_count}")
     logger.info(f"  实际文件数量: {result.actual_count}")
 
     if result.is_complete:
-        logger.info("\n✅ 校验通过: 所有文件已完整下载")
+        logger.info("✅ 校验通过: 所有文件已完整下载")
     else:
         total_failed = len(result.failed_files)
-        logger.error(f"\n❌ 校验失败: 发现 {total_failed} 个失败文件")
+        logger.error(f"❌ 校验失败: 发现 {total_failed} 个失败文件")
         logger.error("  失败文件类型统计:")
         logger.error(f"    - 缺失: {len(result.missing_files)} 个")
         logger.error(f"    - 空文件: {len(result.zero_size_files)} 个")
@@ -355,7 +355,7 @@ def print_validation_report(result: ValidationResult) -> None:
 
         failed_sorted = result.failed_files
         if failed_sorted:
-            logger.error("\n  前十个失败的文件名:")
+            logger.error("  前十个失败的文件名:")
             for i, filename in enumerate(failed_sorted[:10], 1):
                 logger.error(f"    {i}. {filename}")
             if len(failed_sorted) > 10:
