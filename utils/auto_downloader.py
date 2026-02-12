@@ -23,7 +23,7 @@ from constants import (
 )
 from utils.db_manager import DatabaseManager, DownloadTask
 from utils.logger import get_logger
-from utils.scrapy_manager import DownloadConfig, run_scrapy_subprocess
+from utils.scrapy_manager import DownloadConfig, run_scrapy
 from tqdm import tqdm
 from validate_downloads import validate_downloads
 
@@ -280,9 +280,9 @@ class AutoDownloader:
                 delay=self._config.delay,
             )
 
-            # 2. 执行下载（使用子进程避免 reactor 重启问题）
+            # 2. 执行下载
             logger.info(f"⬇️  开始下载: {filename}")
-            run_scrapy_subprocess(download_config)
+            run_scrapy(download_config)
             logger.info(f"✅ 下载完成: {filename}")
 
             # 3. 校验完整性
