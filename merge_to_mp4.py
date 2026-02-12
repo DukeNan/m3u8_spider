@@ -98,7 +98,7 @@ class FFmpegChecker:
                 check=True,
             )
             return True
-        except (subprocess.CalledProcessError, FileNotFoundError):
+        except subprocess.CalledProcessError, FileNotFoundError:
             return False
 
     @staticmethod
