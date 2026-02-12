@@ -214,7 +214,7 @@ class M3U8DownloaderSpider(scrapy.Spider):
         m3u8_url: str | None = None,
         filename: str | None = None,
         download_directory: str | None = None,
-        retry_urls: list[dict] | None = None,
+        retry_urls: list[dict] | str | None = None,
         *args,
         **kwargs,
     ) -> None:
@@ -226,7 +226,16 @@ class M3U8DownloaderSpider(scrapy.Spider):
 
         self._m3u8_url = m3u8_url
         self._filename = filename
-        self._retry_urls = retry_urls  # 重试模式：仅下载指定 URL 列表
+
+        # 处理 retry_urls：如果是从命令行传递的 JSON 字符串，需要解析
+        if isinstance(retry_urls, str):
+            try:
+                self._retry_urls = json.loads(retry_urls)
+            except json.JSONDecodeError, TypeError:
+                self.logger.warning(f"无法解析 retry_urls JSON 字符串: {retry_urls}")
+                self._retry_urls = None
+        else:
+            self._retry_urls = retry_urls  # 重试模式：仅下载指定 URL 列表
 
         if download_directory:
             self.download_directory = download_directory
