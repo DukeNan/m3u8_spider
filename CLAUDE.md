@@ -75,11 +75,8 @@ The project is organized into three main parts: the Scrapy framework for downloa
 
 1. **`main.py`** - Primary entry point for single downloads:
    - Parses CLI arguments (URL, filename, concurrency, delay)
-   - Configures Scrapy settings (changes working directory to `scrapy_project/`)
-   - Creates download directories under `movies/` and log directories under `logs/`
-   - Uses Scrapy's `M3U8_LOG_FILE` setting for log output
-   - Spawns `M3U8DownloaderSpider` with `download_directory` parameter
-   - Uses function-based architecture: `_parse_args()`, `_run_scrapy()`, `_print_header()`, `_print_footer()`
+   - Creates `DownloadConfig` and calls `scrapy_manager.run_scrapy()`
+   - Uses function-based architecture: `_parse_args()`, `_print_header()`, `_print_footer()`
    - **Can be called programmatically** by `auto_downloader.py` for batch processing
 
 2. **`validate_downloads.py`** - Validation utility:
@@ -106,7 +103,7 @@ The project is organized into three main parts: the Scrapy framework for downloa
 5. **`auto_downloader.py`** - Download coordinator:
    - Manages the automated download workflow
    - Fetches tasks from database via `db_manager.py`
-   - Calls `main._run_scrapy()` for downloading
+   - Creates `DownloadConfig` and calls `scrapy_manager.run_scrapy()` for downloading
    - Calls `validate_downloads.validate_downloads()` for validation
    - Updates database status based on validation results
    - Handles graceful shutdown (Ctrl+C)
@@ -120,6 +117,15 @@ The project is organized into three main parts: the Scrapy framework for downloa
    - Connection pooling and auto-reconnect
    - Error handling and retry logic
 
+7. **`scrapy_manager.py`** - Scrapy execution manager:
+   - `DownloadConfig` dataclass: Immutable configuration for downloads
+   - `run_scrapy()`: Executes Scrapy via subprocess using `scrapy crawl` command
+   - Uses `-a` flag to pass spider parameters (m3u8_url, filename, download_directory, retry_urls)
+   - Uses `-s` flag to set Scrapy settings (CONCURRENT_REQUESTS, DOWNLOAD_DELAY, M3U8_LOG_FILE)
+   - Serializes `retry_urls` to JSON string when passing via command line
+   - Runs command in `scrapy_project/` directory via `cwd` parameter
+   - Does not capture output, allowing real-time console logging
+
 ### Scrapy Project (`scrapy_project/`)
 
 The Scrapy project follows the standard Scrapy pattern:
@@ -128,6 +134,8 @@ The Scrapy project follows the standard Scrapy pattern:
   1. `start_requests()` → `parse_m3u8()`: Downloads and parses M3U8 playlist
   2. Yields `M3U8Item` objects for each segment (handled by pipeline)
   3. Receives `download_directory` parameter to set download location
+  4. Supports `retry_urls` parameter (list[dict] or JSON string) for retry mode
+  5. Automatically parses JSON string `retry_urls` when passed via command line
 
 - **`pipelines.py`** - `M3U8FilePipeline` extends Scrapy's `FilesPipeline`:
   - Overrides `file_path()` to use custom filenames
@@ -163,17 +171,19 @@ Both handle:
 ### Manual Single Download Mode
 
 1. User runs `main.py` with M3U8 URL and filename
-2. `main.py` creates download directory under `movies/<filename>/`
-3. `main.py` creates log directory under `logs/`
-4. `main.py` configures Scrapy's `M3U8_LOG_FILE` setting
-5. `main.py` changes to `scrapy_project/` directory and runs the spider
-6. Spider receives `download_directory` as parameter
-7. Spider downloads M3U8 file and saves it as `<directory>/playlist.txt`
-8. Spider yields items for each TS segment URL
-9. Pipeline downloads each TS file to specified directory
-10. Logs are written to both console and `logs/<filename>.log`
-11. User runs validation script to verify completeness
-12. User runs merge script to create MP4 in `mp4/` directory
+2. `main.py` parses arguments and creates `DownloadConfig`
+3. `main.py` calls `scrapy_manager.run_scrapy(config)`
+4. `run_scrapy()` creates download directory under `movies/<filename>/`
+5. `run_scrapy()` creates log directory under `logs/`
+6. `run_scrapy()` builds `scrapy crawl` command with `-a` and `-s` flags
+7. `run_scrapy()` executes subprocess in `scrapy_project/` directory (via `cwd`)
+8. Spider receives parameters via command line (`-a` flags)
+9. Spider downloads M3U8 file and saves it as `<directory>/playlist.txt`
+10. Spider yields items for each TS segment URL
+11. Pipeline downloads each TS file to specified directory
+12. Logs are written to both console (real-time) and `logs/<filename>.log` (via M3U8FileLogExtension)
+13. User runs validation script to verify completeness
+14. User runs merge script to create MP4 in `mp4/` directory
 
 ### Automated Batch Download Mode (MySQL Integration)
 
@@ -186,7 +196,8 @@ Both handle:
    - For each task:
      - Extract `number` (used as filename) and `m3u8_address`
      - Create `DownloadConfig` with task data
-     - Call `main._run_scrapy(config)` to download
+     - Call `scrapy_manager.run_scrapy(config)` to download (uses subprocess)
+     - Each download runs in independent subprocess, avoiding reactor conflicts
      - Call `validate_downloads()` to verify
      - Update database: `status=1` (success) or `status=2` (failed)
      - Update `m3u8_update_time` timestamp
@@ -200,13 +211,16 @@ Both handle:
 - Default download directory is `movies/` at project root
 - Default log directory is `logs/` at project root
 - Default MP4 output directory is `mp4/` at project root
-- The working directory is changed to `scrapy_project/` during download operation
-- `download_directory` is passed directly to the spider as a parameter
+- Scrapy is executed via subprocess using `scrapy crawl` command
+- The subprocess runs in `scrapy_project/` directory (via `cwd` parameter)
+- `download_directory` is passed to spider via `-a` command line flag
 - The `_resolve_directory()` helper resolves simple names to `movies/<name>`
-- Scrapy's `M3U8_LOG_FILE` setting configures the log file path
+- Scrapy's `M3U8_LOG_FILE` setting configures the log file path (via `-s` flag)
 - When modifying the spider, remember that `download_directory` is an absolute path
 - The `m3u8` library requires the base M3U8 URI for proper relative URL resolution
-- Use `pathlib.Path` for all file operations, only use `os` for `chdir()` and `getcwd()`
+- Use `pathlib.Path` for all file operations
+- `retry_urls` parameter is serialized to JSON string when passed via command line
+- Spider automatically parses JSON string `retry_urls` back to list[dict]
 
 ### MySQL Integration
 - Configuration is loaded from `.env` file (not tracked in git)
@@ -222,7 +236,8 @@ Both handle:
 - Logs are saved to `logs/<number>.log`
 - The daemon continues running until manually stopped (Ctrl+C)
 - Failed tasks (status=2) can be reset to 0 for retry
-- The `auto_downloader.py` module reuses `main._run_scrapy()` and `validate_downloads()` functions
+- The `auto_downloader.py` module calls `scrapy_manager.run_scrapy()` and `validate_downloads()` functions
+- Each download runs in an independent subprocess, preventing reactor conflicts in batch processing
 
 ### Dependencies
 - Core: `scrapy`, `m3u8`, `requests`

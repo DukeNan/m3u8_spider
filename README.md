@@ -193,18 +193,21 @@ m3u8_spider/
 │       └── spiders/         # 爬虫目录
 │           ├── __init__.py
 │           └── m3u8_downloader.py  # M3U8 下载爬虫
+├── utils/                   # 工具模块目录
+│   ├── scrapy_manager.py    # Scrapy 管理模块（使用 subprocess 调用）
+│   ├── auto_downloader.py   # 自动下载协调器
+│   ├── db_manager.py        # 数据库管理模块
+│   └── logger.py            # 日志工具
 ├── main.py                  # 主入口（单个下载）
 ├── validate_downloads.py    # 校验脚本
 ├── merge_to_mp4.py         # FFmpeg 合并脚本
-├── db_manager.py           # 🆕 数据库管理模块
-├── auto_downloader.py      # 🆕 自动下载协调器
-├── auto_download_daemon.py # 🆕 守护进程入口
-├── env.example             # 🆕 环境变量模板
+├── auto_download_daemon.py  # 守护进程入口
+├── env.example             # 环境变量模板
 ├── pyproject.toml           # 项目配置与依赖
 ├── README.md                # 使用说明（本文件）
-├── QUICKSTART.md            # 🆕 快速入门指南
-├── AUTO_DOWNLOAD_README.md  # 🆕 自动下载完整手册
-└── TESTING.md               # 🆕 测试指南
+├── QUICKSTART.md            # 快速入门指南
+├── AUTO_DOWNLOAD_README.md  # 自动下载完整手册
+└── TESTING.md               # 测试指南
 ```
 
 ## 目录结构
@@ -234,10 +237,14 @@ m3u8_spider/
 ### 单个下载模式
 
 1. **下载阶段**：
+   - `main.py` 解析命令行参数并创建 `DownloadConfig`
+   - 调用 `scrapy_manager.run_scrapy()` 使用 subprocess 执行 `scrapy crawl` 命令
+   - 在 `scrapy_project/` 目录下运行 Scrapy 爬虫
    - 解析 M3U8 文件，提取所有 TS 片段 URL
    - 在 `movies/` 下创建目录并保存文件
    - 将 M3U8 内容保存为 `playlist.txt`
    - 并发下载所有 TS 文件到指定目录
+   - 日志同时输出到控制台和 `logs/` 目录
 
 2. **校验阶段**：
    - 读取 `playlist.txt` 获取预期文件列表
@@ -258,7 +265,8 @@ m3u8_spider/
 
 2. **主循环**：
    - 查询 `status=0` 的记录
-   - 调用下载模块（复用 `main.py`）
+   - 创建 `DownloadConfig` 并调用 `scrapy_manager.run_scrapy()` 下载
+   - 使用 subprocess 在独立进程中运行 Scrapy（避免 reactor 冲突）
    - 自动校验完整性（复用 `validate_downloads.py`）
    - 更新数据库状态和时间戳
 
