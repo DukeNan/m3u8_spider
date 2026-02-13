@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import subprocess
 import sys
+from base64 import urlsafe_b64encode
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -40,6 +41,7 @@ class DownloadConfig:
         filename: 保存的文件名
         concurrent: 并发下载数
         delay: 下载延迟（秒）
+        metadata_only: 仅下载/补齐元数据文件（playlist、加密信息、密钥、content_lengths）
         retry_urls: 重试模式参数（可选）。
                    如果提供此参数，spider 将跳过 M3U8 解析，直接下载指定的视频片段。
                    每个字典应包含：
@@ -58,6 +60,7 @@ class DownloadConfig:
     filename: str
     concurrent: int = DEFAULT_CONCURRENT
     delay: float = DEFAULT_DELAY
+    metadata_only: bool = False
     retry_urls: list[dict] | None = None  # 重试模式：直接下载指定的视频片段列表
 
     def __post_init__(self) -> None:
@@ -65,6 +68,8 @@ class DownloadConfig:
             raise ValueError(f"无效的URL: {self.m3u8_url}")
         if not self.filename or not self.filename.strip():
             raise ValueError("文件名不能为空")
+        if self.metadata_only and self.retry_urls:
+            raise ValueError("metadata_only 与 retry_urls 不能同时启用")
 
     @property
     def sanitized_filename(self) -> str:
@@ -114,6 +119,8 @@ def run_scrapy(config: DownloadConfig) -> None:
     log_file = log_dir / f"{config.sanitized_filename}.log"
 
     # 构建 scrapy crawl 命令
+    # m3u8_url 通过 base64 传递，避免 URL 中的特殊字符影响 -a name=value 解析
+    m3u8_url_b64 = urlsafe_b64encode(config.m3u8_url.encode("utf-8")).decode("ascii")
     cmd = [
         sys.executable,
         "-m",
@@ -121,7 +128,7 @@ def run_scrapy(config: DownloadConfig) -> None:
         "crawl",
         "m3u8_downloader",
         "-a",
-        f"m3u8_url={config.m3u8_url}",
+        f"m3u8_url_b64={m3u8_url_b64}",
         "-a",
         f"filename={config.sanitized_filename}",
         "-a",
@@ -140,6 +147,9 @@ def run_scrapy(config: DownloadConfig) -> None:
 
         retry_urls_json = json.dumps(config.retry_urls)
         cmd.extend(["-a", f"retry_urls={retry_urls_json}"])
+
+    if config.metadata_only:
+        cmd.extend(["-a", "metadata_only=1"])
 
     logger.info(f"执行命令: {' '.join(cmd)}")
     logger.info(f"日志文件: {log_file}")

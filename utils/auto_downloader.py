@@ -23,9 +23,9 @@ from constants import (
 )
 from utils.db_manager import DatabaseManager, DownloadTask
 from utils.logger import get_logger
-from utils.scrapy_manager import DownloadConfig, run_scrapy
+from utils.recovery_downloader import recover_download
+from utils.scrapy_manager import DownloadConfig
 from tqdm import tqdm
-from validate_downloads import validate_downloads
 
 # 初始化 logger
 logger = get_logger(__name__)
@@ -280,19 +280,17 @@ class AutoDownloader:
                 delay=self._config.delay,
             )
 
-            # 2. 执行下载
-            logger.info(f"⬇️  开始下载: {filename}")
-            run_scrapy(download_config)
-            logger.info(f"✅ 下载完成: {filename}")
+            # 2. 执行恢复流程（补元数据 -> 校验 -> 仅重下失败TS）
+            logger.info(f"⬇️  开始下载恢复流程: {filename}")
+            recovery_result = recover_download(download_config, max_retry_rounds=3)
+            is_complete = recovery_result.is_complete
+            result = recovery_result.validation_result
 
-            # 3. 校验完整性
-            logger.info(f"\n🔍 开始校验: {filename}")
-            download_dir = str(download_config.download_dir)
-            is_complete, result = validate_downloads(download_dir)
-
-            # 4. 更新数据库状态
+            # 3. 更新数据库状态
             if is_complete:
                 logger.info(f"✅ 校验通过: {filename}")
+                if recovery_result.retry_rounds > 0:
+                    logger.info(f"   重试轮次: {recovery_result.retry_rounds}")
                 self._db_manager.update_task_status(
                     task.id, status=1, update_m3u8_time=True
                 )
@@ -302,6 +300,7 @@ class AutoDownloader:
                 logger.error(f"❌ 校验失败: {filename}")
                 failed_count = len(result.get("failed_files", []))
                 logger.error(f"   失败文件数: {failed_count}")
+                logger.error("   已达到最大重试轮次: 3")
                 self._db_manager.update_task_status(
                     task.id, status=2, update_m3u8_time=True
                 )

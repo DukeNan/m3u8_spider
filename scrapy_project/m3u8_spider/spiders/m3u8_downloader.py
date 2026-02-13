@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import json
 import re
+from base64 import urlsafe_b64decode
 from dataclasses import dataclass
 from pathlib import Path
 from urllib.parse import urljoin, urlparse
@@ -212,13 +213,17 @@ class M3U8DownloaderSpider(scrapy.Spider):
     def __init__(
         self,
         m3u8_url: str | None = None,
+        m3u8_url_b64: str | None = None,
         filename: str | None = None,
         download_directory: str | None = None,
+        metadata_only: str | bool | None = None,
         retry_urls: list[dict] | str | None = None,
         *args,
         **kwargs,
     ) -> None:
         super().__init__(*args, **kwargs)
+        if not m3u8_url and m3u8_url_b64:
+            m3u8_url = self._decode_b64_url(m3u8_url_b64)
         if not m3u8_url:
             raise ValueError("必须提供m3u8_url参数")
         if not filename:
@@ -226,12 +231,13 @@ class M3U8DownloaderSpider(scrapy.Spider):
 
         self._m3u8_url = m3u8_url
         self._filename = filename
+        self._metadata_only = self._parse_bool_flag(metadata_only)
 
         # 处理 retry_urls：如果是从命令行传递的 JSON 字符串，需要解析
         if isinstance(retry_urls, str):
             try:
                 self._retry_urls = json.loads(retry_urls)
-            except json.JSONDecodeError, TypeError:
+            except (json.JSONDecodeError, TypeError):
                 self.logger.warning(f"无法解析 retry_urls JSON 字符串: {retry_urls}")
                 self._retry_urls = None
         else:
@@ -251,6 +257,8 @@ class M3U8DownloaderSpider(scrapy.Spider):
 
         if retry_urls:
             self.logger.info(f"重试模式: 将重新下载 {len(retry_urls)} 个文件")
+        elif self._metadata_only:
+            self.logger.info("元数据补齐模式: 仅下载 playlist/加密信息/密钥")
         else:
             self.logger.info(f"M3U8 URL: {self._m3u8_url}")
         self.logger.info(f"下载目录: {self.download_directory}")
@@ -262,6 +270,24 @@ class M3U8DownloaderSpider(scrapy.Spider):
         if str(current_dir).endswith("scrapy_project"):
             return str(current_dir.parent)
         return str(current_dir)
+
+    @staticmethod
+    def _parse_bool_flag(value: str | bool | None) -> bool:
+        """解析来自命令行的布尔参数。"""
+        if isinstance(value, bool):
+            return value
+        if value is None:
+            return False
+        normalized = str(value).strip().lower()
+        return normalized in {"1", "true", "yes", "on"}
+
+    def _decode_b64_url(self, value: str) -> str | None:
+        """解码通过命令行传递的 m3u8_url_b64。"""
+        try:
+            return urlsafe_b64decode(value.encode("ascii")).decode("utf-8")
+        except Exception:
+            self.logger.warning("无法解析 m3u8_url_b64，回退到原始 m3u8_url 参数")
+            return None
 
     def start_requests(self):
         """首轮请求：重试模式直接产出片段项，否则请求 M3U8 地址。"""
@@ -277,8 +303,12 @@ class M3U8DownloaderSpider(scrapy.Spider):
     def _yield_retry_items(self):
         """重试模式：按 retry_urls 直接产出 M3U8Item。"""
         for url_info in self._retry_urls:
+            raw_url = url_info["url"]
+            # 来自 playlist.txt 的 failed_urls 可能是相对路径，必须解析为绝对 URL
+            if raw_url and not raw_url.startswith(("http://", "https://")):
+                raw_url = self._url_resolver.resolve(raw_url)
             item = M3U8Item()
-            item["url"] = url_info["url"]
+            item["url"] = raw_url
             item["filename"] = url_info["filename"]
             item["directory"] = self.download_directory
             item["segment_index"] = url_info.get("index", 0)
@@ -293,6 +323,9 @@ class M3U8DownloaderSpider(scrapy.Spider):
             self._save_encryption_info(encryption_info)
             self._log_encryption(encryption_info)
             yield from self._yield_key_request_if_needed(encryption_info)
+            if self._metadata_only:
+                self.logger.info("元数据补齐模式完成，跳过 TS 下载")
+                return
             yield from self._yield_segment_items_from_playlist(playlist)
         except Exception as e:
             self.logger.error(f"解析M3U8文件失败: {e}")
@@ -369,6 +402,9 @@ class M3U8DownloaderSpider(scrapy.Spider):
         self._save_encryption_info(encryption_info)
         self._log_encryption(encryption_info)
         yield from self._yield_key_request_if_needed(encryption_info)
+        if self._metadata_only:
+            self.logger.info("元数据补齐模式完成（手动解析），跳过 TS 下载")
+            return
 
         segment_index = 0
         for line in m3u8_content.strip().split("\n"):

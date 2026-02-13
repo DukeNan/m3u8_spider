@@ -98,7 +98,7 @@ class FFmpegChecker:
                 check=True,
             )
             return True
-        except subprocess.CalledProcessError, FileNotFoundError:
+        except (subprocess.CalledProcessError, FileNotFoundError):
             return False
 
     @staticmethod
@@ -203,9 +203,15 @@ class MP4Merger:
     负责：检查环境、解析加密信息、收集 TS、解析输出路径、确认覆盖、调用 ffmpeg、清理临时文件。
     """
 
-    def __init__(self, directory: str, output_file: str | None = None) -> None:
+    def __init__(
+        self,
+        directory: str,
+        output_file: str | None = None,
+        force_overwrite: bool = False,
+    ) -> None:
         self._directory = str(Path(directory).resolve())
         self._output_file = output_file
+        self._force_overwrite = force_overwrite
 
     def run(self) -> bool:
         """执行合并，成功返回 True，失败返回 False（含打印错误与清理）"""
@@ -299,6 +305,8 @@ class MP4Merger:
     def _confirm_overwrite(self, output_path: str) -> bool:
         if not Path(output_path).exists():
             return True
+        if self._force_overwrite:
+            return True
         response = input(f"输出文件已存在: {output_path}\n是否覆盖? (y/n): ")
         if response.lower() != "y":
             logger.info("已取消操作")
@@ -388,9 +396,13 @@ class MP4Merger:
 # ---------------------------------------------------------------------------
 
 
-def merge_ts_files(directory: str, output_file: str | None = None) -> bool:
+def merge_ts_files(
+    directory: str,
+    output_file: str | None = None,
+    force_overwrite: bool = False,
+) -> bool:
     """合并 ts 文件为 mp4（保留原有函数接口）"""
-    return MP4Merger(directory, output_file).run()
+    return MP4Merger(directory, output_file, force_overwrite).run()
 
 
 def main() -> None:
