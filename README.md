@@ -8,9 +8,11 @@
 - 自动解析 M3U8 文件并下载所有 TS 片段
 - 默认下载到 `movies/` 目录，合并输出到 `mp4/` 目录
 - 提供文件校验脚本，检查下载完整性
-- 提供基于 pathlib 的现代化路径处理
 - 提供 FFmpeg 合并脚本，将 TS 文件合并为 MP4
-- **🆕 MySQL 数据库集成**: 支持从数据库自动读取任务、批量下载、状态管理
+- **下载恢复流程**：自动补齐元数据 → 校验 → 仅重下失败 TS（最多 3 轮重试）
+- **批量合并**：`batch_merge.py` 遍历 `movies/` 校验、合并、可选删除源目录
+- **远程同步**：`sync_mp4_to_remote.sh` 使用 rsync 将 MP4 同步到远程 Jellyfin 媒体目录
+- **MySQL 数据库集成**：支持从数据库自动读取任务、批量下载、状态管理
 
 ## 环境要求
 
@@ -50,6 +52,8 @@ python main.py <m3u8_url> <filename>
 python main.py https://example.com/playlist.m3u8 my_video
 ```
 下载完成后文件位于 `movies/my_video/`；日志同时输出到控制台和 `logs/my_video.log`。
+
+**下载恢复流程**：`main.py` 内置恢复逻辑，会先补齐元数据（playlist、加密信息、密钥等），校验后若有不完整文件，仅重下失败 TS，最多重试 3 轮。
 
 可选参数：
 - `--concurrent <num>`: 并发下载数（默认: 32）
@@ -96,9 +100,30 @@ python merge_to_mp4.py my_video
 python merge_to_mp4.py my_video output.mp4
 ```
 
-## 🆕 MySQL 自动下载功能
+### 4. 批量合并（可选）
 
-### 4. 自动化批量下载（从数据库）
+遍历 `movies/` 下所有子目录，校验 → 合并 MP4 → 可选删除源目录：
+
+```bash
+python batch_merge.py [--dry-run] [--no-delete]
+```
+
+- `--dry-run`：仅打印将要处理的目录，不执行
+- `--no-delete`：执行校验和合并，但不删除源目录（默认合并成功后会删除）
+
+### 5. 同步 MP4 到远程（可选）
+
+使用 rsync 将本地 `mp4/` 同步到远程 Jellyfin 媒体目录：
+
+```bash
+./sync_mp4_to_remote.sh 用户@主机
+# 或
+REMOTE_HOST=用户@主机 ./sync_mp4_to_remote.sh
+```
+
+## MySQL 自动下载功能
+
+### 6. 自动化批量下载（从数据库）
 
 本项目支持从 MySQL 数据库自动读取下载任务，实现批量自动化下载。
 
@@ -195,12 +220,15 @@ m3u8_spider/
 │           └── m3u8_downloader.py  # M3U8 下载爬虫
 ├── utils/                   # 工具模块目录
 │   ├── scrapy_manager.py    # Scrapy 管理模块（使用 subprocess 调用）
+│   ├── recovery_downloader.py  # 下载恢复流程（补齐元数据 + 重试失败 TS）
 │   ├── auto_downloader.py   # 自动下载协调器
 │   ├── db_manager.py        # 数据库管理模块
 │   └── logger.py            # 日志工具
-├── main.py                  # 主入口（单个下载）
+├── main.py                  # 主入口（单个下载，内置恢复流程）
 ├── validate_downloads.py    # 校验脚本
-├── merge_to_mp4.py         # FFmpeg 合并脚本
+├── merge_to_mp4.py          # FFmpeg 合并脚本
+├── batch_merge.py           # 批量合并脚本
+├── sync_mp4_to_remote.sh    # MP4 同步到远程脚本
 ├── auto_download_daemon.py  # 守护进程入口
 ├── env.example             # 环境变量模板
 ├── pyproject.toml           # 项目配置与依赖
@@ -236,14 +264,14 @@ m3u8_spider/
 
 ### 单个下载模式
 
-1. **下载阶段**：
+1. **下载阶段**（含恢复流程）：
    - `main.py` 解析命令行参数并创建 `DownloadConfig`
-   - 调用 `scrapy_manager.run_scrapy()` 使用 subprocess 执行 `scrapy crawl` 命令
-   - 在 `scrapy_project/` 目录下运行 Scrapy 爬虫
-   - 解析 M3U8 文件，提取所有 TS 片段 URL
+   - 调用 `recovery_downloader.recover_download()` 执行恢复流程：
+     - 补齐缺失元数据（playlist.txt、encryption_info.json、encryption.key 等）
+     - 校验完整性
+     - 若有失败文件，仅重下失败 TS，最多 3 轮
+   - 内部通过 `scrapy_manager.run_scrapy()` 使用 subprocess 执行 Scrapy
    - 在 `movies/` 下创建目录并保存文件
-   - 将 M3U8 内容保存为 `playlist.txt`
-   - 并发下载所有 TS 文件到指定目录
    - 日志同时输出到控制台和 `logs/` 目录
 
 2. **校验阶段**：
@@ -265,9 +293,9 @@ m3u8_spider/
 
 2. **主循环**：
    - 查询 `status=0` 的记录
-   - 创建 `DownloadConfig` 并调用 `scrapy_manager.run_scrapy()` 下载
+   - 创建 `DownloadConfig` 并调用 `recovery_downloader.recover_download()` 执行恢复流程
+   - 内部补齐元数据、校验、仅重下失败 TS（最多 3 轮）
    - 使用 subprocess 在独立进程中运行 Scrapy（避免 reactor 冲突）
-   - 自动校验完整性（复用 `validate_downloads.py`）
    - 更新数据库状态和时间戳
 
 3. **优雅退出**：
@@ -281,7 +309,7 @@ m3u8_spider/
 - 确保有足够的磁盘空间存储所有 TS 文件
 - 合并 MP4 需要安装 FFmpeg
 - 下载速度取决于网络状况和服务器限制
-- 如果下载中断，可以重新运行下载命令（会覆盖已存在的文件）
+- 如果下载中断，可重新运行下载命令；内置恢复流程会补齐元数据并仅重下失败 TS
 
 ## 故障排除
 
