@@ -139,7 +139,7 @@ cp env.example .env
 vim .env
 ```
 
-`.env` 配置示例：
+`.env` 配置示例（完整可选项见项目根目录 `config.py`）：
 ```env
 MYSQL_HOST=localhost
 MYSQL_PORT=3306
@@ -230,7 +230,8 @@ m3u8_spider/
 ├── batch_merge.py           # 批量合并脚本
 ├── sync_mp4_to_remote.sh    # MP4 同步到远程脚本
 ├── auto_download_daemon.py  # 守护进程入口
-├── env.example             # 环境变量模板
+├── config.py                # 统一配置（加载 .env，常量与可覆盖项）
+├── env.example              # .env 模板（参考 config.py）
 ├── pyproject.toml           # 项目配置与依赖
 ├── README.md                # 使用说明（本文件）
 ├── QUICKSTART.md            # 快速入门指南

@@ -9,7 +9,7 @@ from __future__ import annotations
 import argparse
 import sys
 
-from constants import DEFAULT_BASE_DIR, DEFAULT_CONCURRENT, DEFAULT_DELAY, LOGS_DIR
+from config import DEFAULT_BASE_DIR, DEFAULT_CONCURRENT, DEFAULT_DELAY, LOGS_DIR
 from utils.logger import get_logger
 from utils.recovery_downloader import recover_download
 from utils.scrapy_manager import DownloadConfig

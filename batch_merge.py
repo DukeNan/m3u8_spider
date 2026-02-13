@@ -11,7 +11,7 @@ import shutil
 import sys
 from pathlib import Path
 
-from constants import DEFAULT_BASE_DIR
+from config import DEFAULT_BASE_DIR
 from merge_to_mp4 import merge_ts_files
 from utils.logger import get_logger
 from validate_downloads import DownloadValidator, validate_downloads
