@@ -11,7 +11,8 @@ import sys
 
 from constants import DEFAULT_BASE_DIR, DEFAULT_CONCURRENT, DEFAULT_DELAY, LOGS_DIR
 from utils.logger import get_logger
-from utils.scrapy_manager import DownloadConfig, run_scrapy
+from utils.recovery_downloader import recover_download
+from utils.scrapy_manager import DownloadConfig
 
 # 初始化 logger
 logger = get_logger(__name__)
@@ -89,9 +90,17 @@ def main() -> None:
     """主入口：解析参数 → 打印摘要 → 运行 Scrapy → 打印后续步骤。"""
     config = _parse_args()
     _print_header(config)
-    logger.info("开始下载...\n")
-    run_scrapy(config)
-    _print_footer(config)
+    logger.info("开始下载与恢复流程...\n")
+
+    recovery_result = recover_download(config, max_retry_rounds=3)
+    if recovery_result.is_complete:
+        _print_footer(config)
+        return
+
+    failed_files = recovery_result.validation_result.get("failed_files", [])
+    logger.error("\n❌ 下载未完成：超过最大重试轮次后仍有失败文件")
+    logger.error(f"失败文件数: {len(failed_files)}")
+    sys.exit(1)
 
 
 if __name__ == "__main__":
