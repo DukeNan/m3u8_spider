@@ -15,7 +15,7 @@ from pathlib import Path
 # 添加项目根目录到 sys.path（utils 的父目录）
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from constants import (
+from config import (
     DEFAULT_CONCURRENT,
     DEFAULT_DELAY,
     DOWNLOAD_COOLDOWN_SECONDS,

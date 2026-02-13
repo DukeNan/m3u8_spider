@@ -124,7 +124,7 @@ The project is organized into three main parts: the Scrapy framework for downloa
 6. **`sync_mp4_to_remote.sh`** - Rsync script to sync `mp4/` to remote Jellyfin
 
 7. **`auto_download_daemon.py`** - Automated batch download daemon:
-   - Loads configuration from `.env` file (MySQL credentials, check interval)
+   - Loads configuration via `config.py` (which loads `.env`; MySQL credentials, check interval)
    - Parses CLI arguments for overriding defaults
    - Creates and runs `AutoDownloader` instance
    - Displays real-time progress and statistics
@@ -241,6 +241,7 @@ Both handle:
 ## Important Notes
 
 ### General
+- **Unified config**: `config.py` at project root loads `.env` and defines all constants (defaults and env-overridable). Use `from config import ...` for constants; use `get_mysql_config()` for daemon DB credentials. See `config.py` docstring for env var names.
 - Default download directory is `movies/` at project root
 - Default log directory is `logs/` at project root
 - Default MP4 output directory is `mp4/` at project root
@@ -258,8 +259,8 @@ Both handle:
 - `metadata_only` and `retry_urls` cannot be used together in `DownloadConfig`
 
 ### MySQL Integration
-- Configuration is loaded from `.env` file (not tracked in git)
-- Use `env.example` as template for creating `.env`
+- Configuration is loaded from `.env` file (not tracked in git); `config.py` loads it on first import.
+- Use `env.example` as template for creating `.env`; full option list in `config.py`.
 - Database table `movie_info` must have these fields:
   - `id`: Primary key
   - `number`: Video identifier (used as filename)

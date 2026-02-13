@@ -12,7 +12,7 @@ from base64 import urlsafe_b64encode
 from dataclasses import dataclass
 from pathlib import Path
 
-from constants import (
+from config import (
     DEFAULT_BASE_DIR,
     DEFAULT_CONCURRENT,
     DEFAULT_DELAY,

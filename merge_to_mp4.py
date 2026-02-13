@@ -13,7 +13,7 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
-from constants import (
+from config import (
     DEFAULT_BASE_DIR,
     DEFAULT_KEY_FILE,
     DEFAULT_MP4_DIR,

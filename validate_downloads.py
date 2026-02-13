@@ -11,7 +11,7 @@ import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from constants import DEFAULT_BASE_DIR
+from config import DEFAULT_BASE_DIR
 from utils.logger import get_logger
 
 # 初始化 logger

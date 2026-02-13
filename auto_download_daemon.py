@@ -7,22 +7,19 @@
 from __future__ import annotations
 
 import argparse
-import os
 import sys
 from pathlib import Path
-from typing import Any
-
-from dotenv import load_dotenv
 
 # 添加项目根目录到 sys.path
 sys.path.insert(0, str(Path(__file__).parent))
 
-from constants import (
+from config import (
     DEFAULT_CONCURRENT,
     DEFAULT_DELAY,
     DOWNLOAD_COOLDOWN_SECONDS,
+    DOWNLOAD_CHECK_INTERVAL,
+    get_mysql_config,
 )
-
 from utils.auto_downloader import create_auto_downloader
 from utils.logger import get_logger
 
@@ -30,68 +27,19 @@ from utils.logger import get_logger
 logger = get_logger(__name__)
 
 
-# ---------------------------------------------------------------------------
-# 配置加载
-# ---------------------------------------------------------------------------
-
-
-def load_config_from_env() -> dict[str, Any]:
+def load_daemon_config() -> dict:
     """
-    从环境变量加载配置
-
-    Returns:
-        配置字典
-
-    Raises:
-        ValueError: 缺少必需的环境变量
+    加载守护进程配置（MySQL + 可选的下载/间隔默认值）。
+    由 config 模块统一加载 .env，此处仅组装并校验 MySQL。
     """
-    # 加载 .env 文件
-    env_path = Path(__file__).parent / ".env"
-    if env_path.exists():
-        load_dotenv(env_path)
-        logger.info(f"✅ 已加载配置文件: {env_path}")
-    else:
-        logger.warning(f"⚠️  未找到 .env 文件: {env_path}")
-        logger.warning("   将尝试从系统环境变量读取配置")
-
-    # 必需的配置项
-    required_keys = [
-        "MYSQL_HOST",
-        "MYSQL_PORT",
-        "MYSQL_USER",
-        "MYSQL_PASSWORD",
-        "MYSQL_DATABASE",
-    ]
-
-    config = {}
-    missing_keys = []
-
-    for key in required_keys:
-        value = os.getenv(key)
-        if not value:
-            missing_keys.append(key)
-        else:
-            config[key] = value
-
-    if missing_keys:
-        logger.error("\n❌ 缺少必需的环境变量:")
-        for key in missing_keys:
-            logger.error(f"   - {key}")
-        logger.error("\n请创建 .env 文件或设置环境变量")
-        logger.error("参考 env.example 文件")
-        raise ValueError("缺少必需的环境变量")
-
-    # 可选的配置项
-    config["DOWNLOAD_CHECK_INTERVAL"] = int(os.getenv("DOWNLOAD_CHECK_INTERVAL", "60"))
-    config["DEFAULT_CONCURRENT"] = int(
-        os.getenv("DEFAULT_CONCURRENT", str(DEFAULT_CONCURRENT))
-    )
-    config["DEFAULT_DELAY"] = float(os.getenv("DEFAULT_DELAY", str(DEFAULT_DELAY)))
-    config["DOWNLOAD_COOLDOWN_SECONDS"] = int(
-        os.getenv("DOWNLOAD_COOLDOWN_SECONDS", str(DOWNLOAD_COOLDOWN_SECONDS))
-    )
-
-    return config
+    mysql = get_mysql_config()
+    return {
+        **mysql,
+        "DOWNLOAD_CHECK_INTERVAL": DOWNLOAD_CHECK_INTERVAL,
+        "DEFAULT_CONCURRENT": DEFAULT_CONCURRENT,
+        "DEFAULT_DELAY": DEFAULT_DELAY,
+        "DOWNLOAD_COOLDOWN_SECONDS": DOWNLOAD_COOLDOWN_SECONDS,
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -154,9 +102,9 @@ def main() -> None:
     # 解析命令行参数
     args = parse_args()
 
-    # 加载配置
+    # 加载配置（.env 由 config 模块统一加载）
     try:
-        config = load_config_from_env()
+        config = load_daemon_config()
     except ValueError as e:
         logger.error(f"\n❌ 配置加载失败: {e}")
         sys.exit(1)
@@ -181,7 +129,7 @@ def main() -> None:
     try:
         downloader = create_auto_downloader(
             db_host=config["MYSQL_HOST"],
-            db_port=int(config["MYSQL_PORT"]),
+            db_port=config["MYSQL_PORT"],
             db_user=config["MYSQL_USER"],
             db_password=config["MYSQL_PASSWORD"],
             db_database=config["MYSQL_DATABASE"],
