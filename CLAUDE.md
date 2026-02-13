@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Overview
 
-This is a Python-based M3U8 video downloader that uses the Scrapy framework to download HLS (HTTP Live Streaming) video segments from M3U8 playlist files. The project supports two modes: **manual single downloads** via CLI and **automated batch downloads** via MySQL database integration. It follows a three-phase workflow: download, validate, and merge.
+This is a Python-based M3U8 video downloader that uses the Scrapy framework to download HLS (HTTP Live Streaming) video segments from M3U8 playlist files. The project supports two modes: **manual single downloads** via CLI and **automated batch downloads** via MySQL database integration. It uses a **recovery flow**: fill metadata → validate → retry failed TS only (up to 3 rounds). Additional utilities: `batch_merge.py` for batch validate/merge, `sync_mp4_to_remote.sh` for rsync to remote Jellyfin.
 
 ## Directory Structure
 
@@ -43,6 +43,22 @@ python merge_to_mp4.py <directory_or_video_name> [output.mp4]
 ```
 - Pass `my_video` to merge from `movies/my_video` to `mp4/my_video.mp4`
 - Pass custom output filename like `output.mp4` to save as `mp4/output.mp4`
+- `merge_ts_files(directory, output_file, force_overwrite=True)` for programmatic use with overwrite
+
+### Batch Merge
+```bash
+python batch_merge.py [--dry-run] [--no-delete]
+```
+- Iterates `movies/` subdirs: validate → merge MP4 → optionally delete source dir
+- `--dry-run`: list directories only
+- `--no-delete`: merge but keep source dirs
+
+### Sync MP4 to Remote
+```bash
+./sync_mp4_to_remote.sh user@host
+# or REMOTE_HOST=user@host ./sync_mp4_to_remote.sh
+```
+- Rsyncs `mp4/` to remote Jellyfin media directory
 
 ### Auto Download Daemon (MySQL Integration)
 ```bash
@@ -75,9 +91,9 @@ The project is organized into three main parts: the Scrapy framework for downloa
 
 1. **`main.py`** - Primary entry point for single downloads:
    - Parses CLI arguments (URL, filename, concurrency, delay)
-   - Creates `DownloadConfig` and calls `scrapy_manager.run_scrapy()`
+   - Creates `DownloadConfig` and calls `recovery_downloader.recover_download()` (not `run_scrapy()` directly)
+   - Recovery flow: fill metadata → validate → retry failed TS only (max 3 rounds)
    - Uses function-based architecture: `_parse_args()`, `_print_header()`, `_print_footer()`
-   - **Can be called programmatically** by `auto_downloader.py` for batch processing
 
 2. **`validate_downloads.py`** - Validation utility:
    - Uses `_resolve_directory()` helper to resolve video names to `movies/<name>`
@@ -85,31 +101,44 @@ The project is organized into three main parts: the Scrapy framework for downloa
    - Compares against actual downloaded files
    - Reports missing/empty files
    - Uses `pathlib.Path` for all file operations
-   - **Can be called programmatically** by `auto_downloader.py`
+   - **Can be called programmatically** by `recovery_downloader.py` and `auto_downloader.py`
 
 3. **`merge_to_mp4.py`** - FFmpeg wrapper:
    - Uses `_resolve_directory()` helper to resolve video names to `movies/<name>`
    - Creates ordered file list from downloaded TS segments
    - Uses FFmpeg to concatenate into MP4
    - Outputs to `mp4/` directory by default
+   - `force_overwrite` parameter to skip overwrite confirmation
    - Uses `pathlib.Path` for all file operations
 
-4. **`auto_download_daemon.py`** - Automated batch download daemon:
+4. **`utils/recovery_downloader.py`** - Download recovery coordinator:
+   - `recover_download(config, max_retry_rounds=3)`: fill metadata → validate → retry failed TS only
+   - Calls `run_scrapy()` with `metadata_only=True` to fill missing playlist/encryption/key
+   - Extracts `failed_urls` from validation result, builds `retry_urls` for spider
+   - Returns `RecoveryResult` (is_complete, validation_result, retry_rounds, etc.)
+
+5. **`batch_merge.py`** - Batch validate/merge utility:
+   - Iterates `movies/` subdirs: validate → merge → optionally delete source dir
+   - Uses `--dry-run` and `--no-delete` flags
+
+6. **`sync_mp4_to_remote.sh`** - Rsync script to sync `mp4/` to remote Jellyfin
+
+7. **`auto_download_daemon.py`** - Automated batch download daemon:
    - Loads configuration from `.env` file (MySQL credentials, check interval)
    - Parses CLI arguments for overriding defaults
    - Creates and runs `AutoDownloader` instance
    - Displays real-time progress and statistics
 
-5. **`auto_downloader.py`** - Download coordinator:
+8. **`auto_downloader.py`** - Download coordinator:
    - Manages the automated download workflow
    - Fetches tasks from database via `db_manager.py`
-   - Creates `DownloadConfig` and calls `scrapy_manager.run_scrapy()` for downloading
-   - Calls `validate_downloads.validate_downloads()` for validation
+   - Creates `DownloadConfig` and calls `recovery_downloader.recover_download()` (not `run_scrapy()` directly)
+   - Recovery flow handles metadata fill + validation + retry internally
    - Updates database status based on validation results
    - Handles graceful shutdown (Ctrl+C)
    - Maintains download statistics
 
-6. **`db_manager.py`** - Database management layer:
+9. **`db_manager.py`** - Database management layer:
    - `DatabaseManager` class for MySQL operations
    - `get_pending_tasks()`: Query tasks with `status=0`
    - `update_task_status()`: Update task status and timestamp
@@ -117,12 +146,14 @@ The project is organized into three main parts: the Scrapy framework for downloa
    - Connection pooling and auto-reconnect
    - Error handling and retry logic
 
-7. **`scrapy_manager.py`** - Scrapy execution manager:
-   - `DownloadConfig` dataclass: Immutable configuration for downloads
+10. **`scrapy_manager.py`** - Scrapy execution manager:
+   - `DownloadConfig` dataclass: Immutable configuration (m3u8_url, filename, concurrent, delay, metadata_only, retry_urls)
    - `run_scrapy()`: Executes Scrapy via subprocess using `scrapy crawl` command
-   - Uses `-a` flag to pass spider parameters (m3u8_url, filename, download_directory, retry_urls)
+   - Passes `m3u8_url_b64` (base64-encoded) to avoid special character issues in `-a` flag
+   - Uses `-a` flag for spider parameters (m3u8_url_b64, filename, download_directory, retry_urls, metadata_only)
    - Uses `-s` flag to set Scrapy settings (CONCURRENT_REQUESTS, DOWNLOAD_DELAY, M3U8_LOG_FILE)
    - Serializes `retry_urls` to JSON string when passing via command line
+   - `metadata_only` and `retry_urls` cannot be used together
    - Runs command in `scrapy_project/` directory via `cwd` parameter
    - Does not capture output, allowing real-time console logging
 
@@ -134,8 +165,10 @@ The Scrapy project follows the standard Scrapy pattern:
   1. `start_requests()` → `parse_m3u8()`: Downloads and parses M3U8 playlist
   2. Yields `M3U8Item` objects for each segment (handled by pipeline)
   3. Receives `download_directory` parameter to set download location
-  4. Supports `retry_urls` parameter (list[dict] or JSON string) for retry mode
-  5. Automatically parses JSON string `retry_urls` when passed via command line
+  4. Supports `m3u8_url_b64` (base64-decoded to m3u8_url) to avoid special chars in CLI
+  5. Supports `metadata_only` mode: only download playlist, encryption info, key; skip TS segments
+  6. Supports `retry_urls` parameter (list[dict] or JSON string) for retry mode; resolves relative URLs in retry_urls
+  7. Automatically parses JSON string `retry_urls` when passed via command line
 
 - **`pipelines.py`** - `M3U8FilePipeline` extends Scrapy's `FilesPipeline`:
   - Overrides `file_path()` to use custom filenames
@@ -168,22 +201,23 @@ Both handle:
 
 ## Data Flow
 
-### Manual Single Download Mode
+### Manual Single Download Mode (with Recovery Flow)
 
 1. User runs `main.py` with M3U8 URL and filename
 2. `main.py` parses arguments and creates `DownloadConfig`
-3. `main.py` calls `scrapy_manager.run_scrapy(config)`
-4. `run_scrapy()` creates download directory under `movies/<filename>/`
-5. `run_scrapy()` creates log directory under `logs/`
-6. `run_scrapy()` builds `scrapy crawl` command with `-a` and `-s` flags
-7. `run_scrapy()` executes subprocess in `scrapy_project/` directory (via `cwd`)
-8. Spider receives parameters via command line (`-a` flags)
-9. Spider downloads M3U8 file and saves it as `<directory>/playlist.txt`
-10. Spider yields items for each TS segment URL
-11. Pipeline downloads each TS file to specified directory
-12. Logs are written to both console (real-time) and `logs/<filename>.log` (via M3U8FileLogExtension)
-13. User runs validation script to verify completeness
-14. User runs merge script to create MP4 in `mp4/` directory
+3. `main.py` calls `recovery_downloader.recover_download(config, max_retry_rounds=3)`
+4. Recovery flow:
+   - Checks for missing metadata (playlist.txt, encryption_info.json, encryption.key, content_lengths.json)
+   - If missing: calls `run_scrapy(config with metadata_only=True)` to fill only metadata
+   - Runs `validate_downloads()` to verify completeness
+   - If incomplete: extracts `failed_urls`, builds `retry_urls`, calls `run_scrapy(config with retry_urls)`
+   - Repeats retry up to 3 rounds until complete or max reached
+5. `run_scrapy()` creates download directory under `movies/<filename>/`, log directory under `logs/`
+6. Spider receives `m3u8_url_b64` (base64), `metadata_only`, or `retry_urls` via `-a` flags
+7. Spider downloads M3U8 file / metadata / or retry TS files only
+8. Pipeline downloads each TS file to specified directory
+9. Logs written to console and `logs/<filename>.log`
+10. User runs merge script to create MP4 in `mp4/` directory
 
 ### Automated Batch Download Mode (MySQL Integration)
 
@@ -196,9 +230,8 @@ Both handle:
    - For each task:
      - Extract `number` (used as filename) and `m3u8_address`
      - Create `DownloadConfig` with task data
-     - Call `scrapy_manager.run_scrapy(config)` to download (uses subprocess)
+     - Call `recovery_downloader.recover_download(config, max_retry_rounds=3)` (recovery flow handles metadata + validation + retry)
      - Each download runs in independent subprocess, avoiding reactor conflicts
-     - Call `validate_downloads()` to verify
      - Update database: `status=1` (success) or `status=2` (failed)
      - Update `m3u8_update_time` timestamp
    - Sleep for configured interval
@@ -221,6 +254,8 @@ Both handle:
 - Use `pathlib.Path` for all file operations
 - `retry_urls` parameter is serialized to JSON string when passed via command line
 - Spider automatically parses JSON string `retry_urls` back to list[dict]
+- `m3u8_url` is passed via `m3u8_url_b64` (base64-encoded) to avoid special character issues in CLI
+- `metadata_only` and `retry_urls` cannot be used together in `DownloadConfig`
 
 ### MySQL Integration
 - Configuration is loaded from `.env` file (not tracked in git)
@@ -236,7 +271,7 @@ Both handle:
 - Logs are saved to `logs/<number>.log`
 - The daemon continues running until manually stopped (Ctrl+C)
 - Failed tasks (status=2) can be reset to 0 for retry
-- The `auto_downloader.py` module calls `scrapy_manager.run_scrapy()` and `validate_downloads()` functions
+- The `auto_downloader.py` module calls `recovery_downloader.recover_download()` which internally uses `run_scrapy()` and `validate_downloads()`
 - Each download runs in an independent subprocess, preventing reactor conflicts in batch processing
 
 ### Dependencies
