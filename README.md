@@ -40,7 +40,7 @@ uv pip install -e .
 ### 1. 下载 M3U8 文件
 
 ```bash
-python main.py <m3u8_url> <filename>
+python -m cli.main <m3u8_url> <filename>
 ```
 
 参数说明：
@@ -49,11 +49,11 @@ python main.py <m3u8_url> <filename>
 
 示例：
 ```bash
-python main.py https://example.com/playlist.m3u8 my_video
+python -m cli.main https://example.com/playlist.m3u8 my_video
 ```
 下载完成后文件位于 `movies/my_video/`；日志同时输出到控制台和 `logs/my_video.log`。
 
-**下载恢复流程**：`main.py` 内置恢复逻辑，会先补齐元数据（playlist、加密信息、密钥等），校验后若有不完整文件，仅重下失败 TS，最多重试 3 轮。
+**下载恢复流程**：`cli/main.py` 内置恢复逻辑，会先补齐元数据（playlist、加密信息、密钥等），校验后若有不完整文件，仅重下失败 TS，最多重试 3 轮。
 
 可选参数：
 - `--concurrent <num>`: 并发下载数（默认: 32）
@@ -61,7 +61,7 @@ python main.py https://example.com/playlist.m3u8 my_video
 
 示例：
 ```bash
-python main.py https://example.com/playlist.m3u8 my_video --concurrent 16 --delay 0.1
+python -m cli.main https://example.com/playlist.m3u8 my_video --concurrent 16 --delay 0.1
 ```
 
 ### 2. 校验下载文件
@@ -69,14 +69,14 @@ python main.py https://example.com/playlist.m3u8 my_video --concurrent 16 --dela
 下载完成后，使用校验脚本检查文件是否完整：
 
 ```bash
-python validate_downloads.py <目录路径或视频名>
+python -m m3u8_spider.core.validator <目录路径或视频名>
 ```
 
 传入视频名（如 `my_video`）时，默认校验 `movies/my_video`。也可传入完整或相对路径。
 
 示例：
 ```bash
-python validate_downloads.py my_video
+python -m m3u8_spider.core.validator my_video
 ```
 
 校验脚本会检查：

@@ -1,16 +1,16 @@
 #!/usr/bin/env bash
 # 使用 rsync 将本地 MP4 目录同步到远程 Jellyfin 媒体目录
-# 用法: ./sync_mp4_to_remote.sh [远程用户@远程主机]
+# 用法: ./sync_mp4.sh [远程用户@远程主机]
 
 set -e
 
 # 本地 MP4 目录（项目根目录下的 mp4/）
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-LOCAL_DIR="${LOCAL_DIR:-$SCRIPT_DIR/mp4}"
+LOCAL_DIR="${LOCAL_DIR:-$SCRIPT_DIR/../mp4}"
 REMOTE_PATH="/share/data/jellyfin/media/jable"
 
 # 远程主机：可通过参数传入，或设置环境变量 REMOTE_HOST
-# 例如: REMOTE_HOST="user@192.168.1.100" 或 ./sync_mp4_to_remote.sh user@192.168.1.100
+# 例如: REMOTE_HOST="user@192.168.1.100" 或 ./sync_mp4.sh user@192.168.1.100
 REMOTE_HOST="${1:-${REMOTE_HOST}}"
 
 if [[ -z "$REMOTE_HOST" ]]; then

@@ -8,20 +8,16 @@ from __future__ import annotations
 
 import argparse
 import sys
-from pathlib import Path
 
-# 添加项目根目录到 sys.path
-sys.path.insert(0, str(Path(__file__).parent))
-
-from config import (
+from m3u8_spider.config import (
     DEFAULT_CONCURRENT,
     DEFAULT_DELAY,
     DOWNLOAD_COOLDOWN_SECONDS,
     DOWNLOAD_CHECK_INTERVAL,
     get_mysql_config,
 )
-from utils.auto_downloader import create_auto_downloader
-from utils.logger import get_logger
+from m3u8_spider.automation.auto_downloader import create_auto_downloader
+from m3u8_spider.logger import get_logger
 
 # 初始化 logger
 logger = get_logger(__name__)
@@ -54,9 +50,9 @@ def parse_args() -> argparse.Namespace:
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 示例:
-  python auto_download_daemon.py
-  python auto_download_daemon.py --concurrent 64 --delay 0.5
-  python auto_download_daemon.py --check-interval 30
+  python -m cli.daemon
+  python -m cli.daemon --concurrent 64 --delay 0.5
+  python -m cli.daemon --check-interval 30
 
 说明:
   - 守护进程会持续运行，从数据库读取待下载任务

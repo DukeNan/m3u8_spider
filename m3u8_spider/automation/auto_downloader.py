@@ -12,19 +12,16 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 
-# 添加项目根目录到 sys.path（utils 的父目录）
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-
-from config import (
+from m3u8_spider.config import (
     DEFAULT_CONCURRENT,
     DEFAULT_DELAY,
     DOWNLOAD_COOLDOWN_SECONDS,
     INVALID_FILENAME_CHARS,
 )
-from utils.db_manager import DatabaseManager, DownloadTask
-from utils.logger import get_logger
-from utils.recovery_downloader import recover_download
-from utils.scrapy_manager import DownloadConfig
+from m3u8_spider.database.manager import DatabaseManager, DownloadTask
+from m3u8_spider.logger import get_logger
+from m3u8_spider.core.recovery import recover_download
+from m3u8_spider.core.downloader import DownloadConfig
 from tqdm import tqdm
 
 # 初始化 logger
@@ -107,7 +104,7 @@ class AutoDownloader:
         )
         self._stats = DownloadStats()
         self._running = True
-        self._project_root = Path(__file__).resolve().parent.parent
+        self._project_root = Path(__file__).resolve().parent.parent.parent
 
         # 注册信号处理器
         signal.signal(signal.SIGINT, self._signal_handler)

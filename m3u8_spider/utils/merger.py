@@ -13,7 +13,7 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
-from config import (
+from m3u8_spider.config import (
     DEFAULT_BASE_DIR,
     DEFAULT_KEY_FILE,
     DEFAULT_MP4_DIR,
@@ -21,7 +21,7 @@ from config import (
     FILE_LIST_NAME,
     TEMP_PLAYLIST_NAME,
 )
-from utils.logger import get_logger
+from m3u8_spider.logger import get_logger
 
 # 初始化 logger
 logger = get_logger(__name__)
@@ -40,7 +40,7 @@ def _resolve_directory(arg: str) -> str:
         return arg
     if "/" in arg or "\\" in arg:
         return arg
-    project_root = Path(__file__).resolve().parent
+    project_root = Path(__file__).resolve().parent.parent.parent
     return str(project_root / DEFAULT_BASE_DIR / arg)
 
 
@@ -293,7 +293,7 @@ class MP4Merger:
         logger.info(f"{sep}\n")
 
     def _resolve_output_path(self) -> str:
-        project_root = Path(__file__).resolve().parent
+        project_root = Path(__file__).resolve().parent.parent.parent
         mp4_dir = project_root / DEFAULT_MP4_DIR
         if not self._output_file:
             dir_name = Path(self._directory.rstrip("/")).name
@@ -408,14 +408,14 @@ def merge_ts_files(
 def main() -> None:
     """主函数"""
     if len(sys.argv) < 2:
-        logger.error("用法: python merge_to_mp4.py <目录路径或视频名> [输出文件名]")
+        logger.error("用法: python -m m3u8_spider.utils.merger <目录路径或视频名> [输出文件名]")
         logger.error(
-            "示例: python merge_to_mp4.py my_video           # 默认合并 movies/my_video，输出到 mp4/my_video.mp4"
+            "示例: python -m m3u8_spider.utils.merger my_video           # 默认合并 movies/my_video，输出到 mp4/my_video.mp4"
         )
         logger.error(
-            "      python merge_to_mp4.py my_video output.mp4  # 输出到 mp4/output.mp4"
+            "      python -m m3u8_spider.utils.merger my_video output.mp4  # 输出到 mp4/output.mp4"
         )
-        logger.error("      python merge_to_mp4.py ./my_video output.mp4")
+        logger.error("      python -m m3u8_spider.utils.merger ./my_video output.mp4")
         sys.exit(1)
 
     directory = _resolve_directory(sys.argv[1])

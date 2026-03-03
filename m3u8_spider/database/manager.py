@@ -13,7 +13,7 @@ from datetime import datetime
 import pymysql
 from pymysql.cursors import DictCursor
 
-from utils.logger import get_logger
+from m3u8_spider.logger import get_logger
 
 # 初始化 logger
 logger = get_logger(__name__)
