@@ -11,7 +11,7 @@ import os
 import sys
 from pathlib import Path
 
-from config import (
+from m3u8_spider.config import (
     DEFAULT_LOG_LEVEL,
     LOG_DATE_FORMAT,
     LOG_FORMAT,

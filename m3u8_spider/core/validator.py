@@ -11,8 +11,8 @@ import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from config import DEFAULT_BASE_DIR
-from utils.logger import get_logger
+from m3u8_spider.config import DEFAULT_BASE_DIR
+from m3u8_spider.logger import get_logger
 
 # 初始化 logger
 logger = get_logger(__name__)
@@ -26,7 +26,7 @@ def _resolve_directory(arg: str) -> str:
         return arg
     if "/" in arg or "\\" in arg:
         return arg
-    project_root = Path(__file__).resolve().parent
+    project_root = Path(__file__).resolve().parent.parent.parent
     return str(project_root / DEFAULT_BASE_DIR / arg)
 
 
@@ -384,11 +384,11 @@ def validate_downloads(directory: str) -> tuple[bool, dict]:
 def main() -> None:
     """主函数"""
     if len(sys.argv) < 2:
-        logger.error("用法: python validate_downloads.py <目录路径或视频名>")
+        logger.error("用法: python -m m3u8_spider.core.validator <目录路径或视频名>")
         logger.error(
-            "示例: python validate_downloads.py my_video   # 默认校验 movies/my_video"
+            "示例: python -m m3u8_spider.core.validator my_video   # 默认校验 movies/my_video"
         )
-        logger.error("      python validate_downloads.py ./my_video")
+        logger.error("      python -m m3u8_spider.core.validator ./my_video")
         sys.exit(1)
 
     directory = _resolve_directory(sys.argv[1])

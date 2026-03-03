@@ -11,10 +11,10 @@ import shutil
 import sys
 from pathlib import Path
 
-from config import DEFAULT_BASE_DIR
-from merge_to_mp4 import merge_ts_files
-from utils.logger import get_logger
-from validate_downloads import DownloadValidator, validate_downloads
+from m3u8_spider.config import DEFAULT_BASE_DIR
+from m3u8_spider.utils.merger import merge_ts_files
+from m3u8_spider.logger import get_logger
+from m3u8_spider.core.validator import DownloadValidator, validate_downloads
 
 # 初始化 logger
 logger = get_logger(__name__)
@@ -43,7 +43,7 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    project_root = Path(__file__).resolve().parent
+    project_root = Path(__file__).resolve().parent.parent
     movies_dir = project_root / DEFAULT_BASE_DIR
 
     subdirs = _get_subdirs(movies_dir)

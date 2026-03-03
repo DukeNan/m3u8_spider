@@ -12,9 +12,9 @@ import json
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from utils.logger import get_logger
-from utils.scrapy_manager import DownloadConfig, run_scrapy
-from validate_downloads import validate_downloads
+from m3u8_spider.logger import get_logger
+from m3u8_spider.core.downloader import DownloadConfig, run_scrapy
+from m3u8_spider.core.validator import validate_downloads
 
 logger = get_logger(__name__)
 

@@ -12,7 +12,7 @@ from base64 import urlsafe_b64encode
 from dataclasses import dataclass
 from pathlib import Path
 
-from config import (
+from m3u8_spider.config import (
     DEFAULT_BASE_DIR,
     DEFAULT_CONCURRENT,
     DEFAULT_DELAY,
@@ -20,7 +20,7 @@ from config import (
     LOGS_DIR,
 )
 
-from utils.logger import get_logger
+from m3u8_spider.logger import get_logger
 
 # 初始化 logger
 logger = get_logger(__name__)
@@ -81,8 +81,8 @@ class DownloadConfig:
 
     @property
     def project_root(self) -> Path:
-        """项目根目录（utils 的父目录）"""
-        return Path(__file__).resolve().parent.parent
+        """项目根目录（m3u8_spider 包的父目录）"""
+        return Path(__file__).resolve().parent.parent.parent
 
     @property
     def scrapy_project_dir(self) -> Path:

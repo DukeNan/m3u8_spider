@@ -19,8 +19,8 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
-# 加载 .env（项目根目录）
-_env_path = Path(__file__).resolve().parent / ".env"
+# 加载 .env（项目根目录：m3u8_spider 包的父目录）
+_env_path = Path(__file__).resolve().parent.parent / ".env"
 load_dotenv(_env_path)
 
 

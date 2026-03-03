@@ -9,10 +9,10 @@ from __future__ import annotations
 import argparse
 import sys
 
-from config import DEFAULT_BASE_DIR, DEFAULT_CONCURRENT, DEFAULT_DELAY, LOGS_DIR
-from utils.logger import get_logger
-from utils.recovery_downloader import recover_download
-from utils.scrapy_manager import DownloadConfig
+from m3u8_spider.config import DEFAULT_BASE_DIR, DEFAULT_CONCURRENT, DEFAULT_DELAY, LOGS_DIR
+from m3u8_spider.logger import get_logger
+from m3u8_spider.core.recovery import recover_download
+from m3u8_spider.core.downloader import DownloadConfig
 
 # 初始化 logger
 logger = get_logger(__name__)
@@ -25,8 +25,8 @@ def _parse_args(argv: list[str] | None = None) -> DownloadConfig:
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 示例:
-  python main.py https://example.com/playlist.m3u8 my_video
-  python main.py https://example.com/playlist.m3u8 video_name --concurrent 16
+  python -m cli.main https://example.com/playlist.m3u8 my_video
+  python -m cli.main https://example.com/playlist.m3u8 video_name --concurrent 16
         """,
     )
     parser.add_argument("m3u8_url", help="M3U8文件的URL地址")
@@ -82,8 +82,8 @@ def _print_footer(config: DownloadConfig) -> None:
     logger.info(f"文件保存在: {config.download_dir}")
     logger.info(f"{sep}\n")
     logger.info("下一步操作:")
-    logger.info(f"  校验下载: python validate_downloads.py {name}")
-    logger.info(f"  合并为MP4: python merge_to_mp4.py {name}")
+    logger.info(f"  校验下载: python -m m3u8_spider.core.validator {name}")
+    logger.info(f"  合并为MP4: python -m m3u8_spider.utils.merger {name}")
 
 
 def main() -> None:

@@ -2,8 +2,8 @@
 """将 SQLite3 数据导入到 PostgreSQL 16 的脚本。
 
 用法:
-    python sqlite_to_postgres.py <sqlite_path> [--pg-url URL]
-    
+    python -m m3u8_spider.utils.migration <sqlite_path> [--pg-url URL]
+
 环境变量 (当未提供 --pg-url 时):
     PG_HOST, PG_PORT, PG_USER, PG_PASSWORD, PG_DATABASE
 
