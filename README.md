@@ -10,8 +10,8 @@
 - 提供文件校验脚本，检查下载完整性
 - 提供 FFmpeg 合并脚本，将 TS 文件合并为 MP4
 - **下载恢复流程**：自动补齐元数据 → 校验 → 仅重下失败 TS（最多 3 轮重试）
-- **批量合并**：`batch_merge.py` 遍历 `movies/` 校验、合并、可选删除源目录
-- **远程同步**：`sync_mp4_to_remote.sh` 使用 rsync 将 MP4 同步到远程 Jellyfin 媒体目录
+- **批量合并**：`cli/batch_merge.py`（或 `m3u8-batch-merge`）遍历 `movies/` 校验、合并、可选删除源目录
+- **远程同步**：`cli/sync_mp4.sh` 使用 rsync 将 MP4 同步到远程 Jellyfin 媒体目录
 - **MySQL 数据库集成**：支持从数据库自动读取任务、批量下载、状态管理
 
 ## 环境要求
@@ -89,15 +89,15 @@ python -m m3u8_spider.core.validator my_video
 使用 FFmpeg 将下载的 TS 文件合并为 MP4：
 
 ```bash
-python merge_to_mp4.py <目录路径或视频名> [output.mp4]
+python -m m3u8_spider.utils.merger <目录路径或视频名> [output.mp4]
 ```
 
 传入视频名（如 `my_video`）时，默认从 `movies/my_video` 合并；合成后的 MP4 默认保存到 **`mp4/`** 目录（如 `mp4/my_video.mp4`）。也可传入完整或相对路径。
 
 示例：
 ```bash
-python merge_to_mp4.py my_video
-python merge_to_mp4.py my_video output.mp4
+python -m m3u8_spider.utils.merger my_video
+python -m m3u8_spider.utils.merger my_video output.mp4
 ```
 
 ### 4. 批量合并（可选）
@@ -105,7 +105,9 @@ python merge_to_mp4.py my_video output.mp4
 遍历 `movies/` 下所有子目录，校验 → 合并 MP4 → 可选删除源目录：
 
 ```bash
-python batch_merge.py [--dry-run] [--no-delete]
+python -m cli.batch_merge [--dry-run] [--no-delete]
+# 或安装后使用入口点
+m3u8-batch-merge [--dry-run] [--no-delete]
 ```
 
 - `--dry-run`：仅打印将要处理的目录，不执行
@@ -116,9 +118,9 @@ python batch_merge.py [--dry-run] [--no-delete]
 使用 rsync 将本地 `mp4/` 同步到远程 Jellyfin 媒体目录：
 
 ```bash
-./sync_mp4_to_remote.sh 用户@主机
+./cli/sync_mp4.sh 用户@主机
 # 或
-REMOTE_HOST=用户@主机 ./sync_mp4_to_remote.sh
+REMOTE_HOST=用户@主机 ./cli/sync_mp4.sh
 ```
 
 ## MySQL 自动下载功能
@@ -139,7 +141,7 @@ cp env.example .env
 vim .env
 ```
 
-`.env` 配置示例（完整可选项见项目根目录 `config.py`）：
+`.env` 配置示例（完整可选项见 `m3u8_spider/config.py`）：
 ```env
 MYSQL_HOST=localhost
 MYSQL_PORT=3306
@@ -162,16 +164,19 @@ DOWNLOAD_CHECK_INTERVAL=60
 
 ```bash
 # 基本启动
-python auto_download_daemon.py
+python -m cli.daemon
+# 或安装后使用入口点
+m3u8-daemon
 
 # 自定义参数
-python auto_download_daemon.py --concurrent 64 --delay 0.5 --check-interval 30
+python -m cli.daemon --concurrent 64 --delay 0.5 --check-interval 30 --cooldown 30
 ```
 
 参数说明：
 - `--concurrent`: 并发下载数（默认: 32）
 - `--delay`: 下载延迟（秒，默认: 0）
 - `--check-interval`: 检查数据库间隔（秒，默认: 60）
+- `--cooldown`: 单次下载完成后的冷却时间（秒，默认见 config）
 
 #### 工作流程
 
@@ -205,38 +210,39 @@ python auto_download_daemon.py --concurrent 64 --delay 0.5 --check-interval 30
 
 ```
 m3u8_spider/
+├── cli/                     # 命令行入口
+│   ├── main.py              # 单次下载入口（python -m cli.main / m3u8-download）
+│   ├── daemon.py            # 自动下载守护进程（python -m cli.daemon / m3u8-daemon）
+│   ├── batch_merge.py       # 批量合并（python -m cli.batch_merge / m3u8-batch-merge）
+│   └── sync_mp4.sh          # MP4 同步到远程（rsync）
+├── m3u8_spider/             # 核心包
+│   ├── config.py            # 统一配置（加载 .env）
+│   ├── logger.py            # 日志
+│   ├── core/                # 核心逻辑
+│   │   ├── downloader.py    # Scrapy 调用（DownloadConfig, run_scrapy）
+│   │   ├── recovery.py      # 恢复流程（补齐元数据 + 重试失败 TS）
+│   │   └── validator.py     # 校验（validate_downloads）
+│   ├── utils/               # 工具
+│   │   └── merger.py        # FFmpeg 合并（merge_ts_files）
+│   ├── automation/          # 自动下载
+│   │   └── auto_downloader.py
+│   └── database/            # 数据库
+│       └── manager.py       # MySQL 连接与任务查询
 ├── scrapy_project/          # Scrapy 项目目录
 │   ├── scrapy.cfg
-│   └── m3u8_spider/         # Scrapy 项目包
-│       ├── __init__.py
-│       ├── extensions.py    # 扩展（如 M3U8 文件日志）
-│       ├── items.py         # 数据项定义
-│       ├── logformatter.py  # 自定义日志格式
-│       ├── middlewares.py   # 中间件
-│       ├── pipelines.py     # 文件保存管道
-│       ├── settings.py      # Scrapy 配置
-│       └── spiders/         # 爬虫目录
-│           ├── __init__.py
-│           └── m3u8_downloader.py  # M3U8 下载爬虫
-├── utils/                   # 工具模块目录
-│   ├── scrapy_manager.py    # Scrapy 管理模块（使用 subprocess 调用）
-│   ├── recovery_downloader.py  # 下载恢复流程（补齐元数据 + 重试失败 TS）
-│   ├── auto_downloader.py   # 自动下载协调器
-│   ├── db_manager.py        # 数据库管理模块
-│   └── logger.py            # 日志工具
-├── main.py                  # 主入口（单个下载，内置恢复流程）
-├── validate_downloads.py    # 校验脚本
-├── merge_to_mp4.py          # FFmpeg 合并脚本
-├── batch_merge.py           # 批量合并脚本
-├── sync_mp4_to_remote.sh    # MP4 同步到远程脚本
-├── auto_download_daemon.py  # 守护进程入口
-├── config.py                # 统一配置（加载 .env，常量与可覆盖项）
-├── env.example              # .env 模板（参考 config.py）
-├── pyproject.toml           # 项目配置与依赖
-├── README.md                # 使用说明（本文件）
-├── QUICKSTART.md            # 快速入门指南
-├── AUTO_DOWNLOAD_README.md  # 自动下载完整手册
-└── TESTING.md               # 测试指南
+│   └── m3u8_spider/         # Scrapy 包（爬虫、管道、配置）
+│       ├── spiders/m3u8_downloader.py
+│       ├── pipelines.py
+│       ├── settings.py
+│       ├── extensions.py
+│       └── logformatter.py
+├── env.example              # .env 模板
+├── pyproject.toml           # 项目配置与依赖、入口点
+├── README.md
+├── CLAUDE.md
+├── QUICKSTART.md
+├── AUTO_DOWNLOAD_README.md
+└── TESTING.md
 ```
 
 ## 目录结构
@@ -266,21 +272,21 @@ m3u8_spider/
 ### 单个下载模式
 
 1. **下载阶段**（含恢复流程）：
-   - `main.py` 解析命令行参数并创建 `DownloadConfig`
-   - 调用 `recovery_downloader.recover_download()` 执行恢复流程：
+   - `cli/main.py` 解析命令行参数并创建 `DownloadConfig`
+   - 调用 `m3u8_spider.core.recovery` 中的恢复流程：
      - 补齐缺失元数据（playlist.txt、encryption_info.json、encryption.key 等）
      - 校验完整性
      - 若有失败文件，仅重下失败 TS，最多 3 轮
-   - 内部通过 `scrapy_manager.run_scrapy()` 使用 subprocess 执行 Scrapy
+   - 内部通过 `m3u8_spider.core.downloader.run_scrapy()` 使用 subprocess 执行 Scrapy
    - 在 `movies/` 下创建目录并保存文件
    - 日志同时输出到控制台和 `logs/` 目录
 
-2. **校验阶段**：
+2. **校验阶段**（`m3u8_spider.core.validator`）：
    - 读取 `playlist.txt` 获取预期文件列表
    - 检查实际下载的文件数量和大小
    - 生成校验报告
 
-3. **合并阶段**：
+3. **合并阶段**（`m3u8_spider.utils.merger`）：
    - 按顺序读取所有 TS 文件
    - 使用 FFmpeg 合并为单个 MP4 文件
    - 输出到 `mp4/` 目录
@@ -294,7 +300,7 @@ m3u8_spider/
 
 2. **主循环**：
    - 查询 `status=0` 的记录
-   - 创建 `DownloadConfig` 并调用 `recovery_downloader.recover_download()` 执行恢复流程
+   - 创建 `DownloadConfig` 并调用 `m3u8_spider.core.recovery` 的恢复流程
    - 内部补齐元数据、校验、仅重下失败 TS（最多 3 轮）
    - 使用 subprocess 在独立进程中运行 Scrapy（避免 reactor 冲突）
    - 更新数据库状态和时间戳
