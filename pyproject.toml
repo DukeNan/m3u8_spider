@@ -16,11 +16,13 @@ dependencies = [
 
 [project.optional-dependencies]
 postgres = ["psycopg2-binary>=2.9.0"]
+crawl = ["crawl4ai>=0.4.0"]
 
 [project.scripts]
 m3u8-download = "cli.main:main"
 m3u8-daemon = "cli.daemon:main"
 m3u8-batch-merge = "cli.batch_merge:main"
+m3u8-refresh = "cli.m3u8_refresh_daemon:main"
 
 [tool.pyright]
 extraPaths = ["scrapy_project"]
