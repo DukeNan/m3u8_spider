@@ -85,6 +85,21 @@ DOWNLOAD_CHECK_INTERVAL: int = int(
 
 
 # ---------------------------------------------------------------------------
+# M3U8 URL 刷新守护进程（可被环境变量覆盖）
+# ---------------------------------------------------------------------------
+
+_DEFAULT_M3U8_REFRESH_INTERVAL = 300
+_DEFAULT_M3U8_REFRESH_MIN_MINUTES = 10
+
+M3U8_REFRESH_INTERVAL: int = int(
+    os.getenv("M3U8_REFRESH_INTERVAL", str(_DEFAULT_M3U8_REFRESH_INTERVAL))
+)
+M3U8_REFRESH_MIN_MINUTES: int = int(
+    os.getenv("M3U8_REFRESH_MIN_MINUTES", str(_DEFAULT_M3U8_REFRESH_MIN_MINUTES))
+)
+
+
+# ---------------------------------------------------------------------------
 # MySQL 配置（仅从环境变量读取）
 # ---------------------------------------------------------------------------
 

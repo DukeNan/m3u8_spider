@@ -34,6 +34,8 @@ class DownloadTask:
     status: int
     title: str | None = None
     provider: str | None = None
+    url: str | None = None  # 页面 URL，用于 M3U8 刷新守护进程
+    m3u8_update_time: datetime | None = None
 
     def __repr__(self) -> str:
         return (
@@ -259,6 +261,83 @@ class DatabaseManager:
         except pymysql.Error as e:
             logger.error(f"❌ 查询任务失败 (ID={task_id}): {e}")
             return None
+
+    def get_tasks_for_m3u8_refresh(
+        self,
+        limit: int = 30,
+        min_minutes_since_update: int = 10,
+    ) -> list[DownloadTask]:
+        """
+        查询需要刷新 M3U8 地址的任务（status != 1，有 url，且 m3u8_update_time 超过指定分钟）
+
+        Args:
+            limit: 单次查询的最大任务数
+            min_minutes_since_update: m3u8_update_time 距现在超过此分钟数才纳入
+
+        Returns:
+            待刷新任务列表
+        """
+        if not self._ensure_connection() or not self._connection:
+            return []
+
+        try:
+            with self._connection.cursor() as cursor:
+                sql = """
+                    SELECT id, number, m3u8_address, status, title, provider, url, m3u8_update_time
+                    FROM movie_info
+                    WHERE status != 1
+                      AND url IS NOT NULL AND url != ''
+                      AND (m3u8_update_time IS NULL OR m3u8_update_time < DATE_SUB(NOW(), INTERVAL %s MINUTE))
+                    ORDER BY id ASC
+                    LIMIT %s
+                """
+                cursor.execute(sql, (min_minutes_since_update, limit))
+                rows = cursor.fetchall()
+
+                tasks = []
+                for row in rows:
+                    task = DownloadTask(
+                        id=row["id"],
+                        number=row["number"],
+                        m3u8_address=row["m3u8_address"] or "",
+                        status=row["status"],
+                        title=row.get("title"),
+                        provider=row.get("provider"),
+                        url=row.get("url"),
+                        m3u8_update_time=row.get("m3u8_update_time"),
+                    )
+                    tasks.append(task)
+                return tasks
+        except pymysql.Error as e:
+            logger.error(f"❌ 查询 M3U8 刷新任务失败: {e}")
+            return []
+
+    def update_m3u8_address(self, task_id: int, m3u8_url: str) -> bool:
+        """
+        更新任务的 M3U8 地址和更新时间
+
+        Args:
+            task_id: 任务 ID
+            m3u8_url: 新的 M3U8 URL
+
+        Returns:
+            更新成功返回 True，失败返回 False
+        """
+        if not self._ensure_connection() or not self._connection:
+            return False
+
+        try:
+            with self._connection.cursor() as cursor:
+                sql = """
+                    UPDATE movie_info
+                    SET m3u8_address = %s, m3u8_update_time = %s
+                    WHERE id = %s
+                """
+                cursor.execute(sql, (m3u8_url, datetime.now(), task_id))
+                return cursor.rowcount > 0
+        except pymysql.Error as e:
+            logger.error(f"❌ 更新 M3U8 地址失败 (ID={task_id}): {e}")
+            return False
 
     def get_statistics(self) -> dict[str, int]:
         """
