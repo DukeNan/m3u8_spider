@@ -1,136 +1,127 @@
 # External Integrations
 
-**Analysis Date:** 2026-03-20
+**Analysis Date:** 2026-03-29
 
 ## APIs & External Services
 
-**M3U8 视频源:**
-- 任意提供 M3U8 播放列表的视频网站
-- 通过 Scrapy spider 下载 TS 片段
-- 支持相对/绝对 URL 自动解析
-- 支持 AES-128 加密视频
+**M3U8/HLS 视频源:**
+- HTTP M3U8 播放列表 URL - 通过 Scrapy spider 请求
+  - SDK/Client: Scrapy 内置 HTTP 下载器 + `m3u8` 库解析
+  - 配置: 通过 CLI 参数传入 URL
+  - 文件: `scrapy_project/m3u8_spider/spiders/m3u8_downloader.py`
 
-**页面爬取 (可选):**
-- crawl4ai - 用于从页面 HTML 中提取 M3U8 URL
-- 异步浏览器爬取，支持 JavaScript 渲染页面
-- 仅 `m3u8-refresh` 守护进程需要
+**网页爬取（可选）:**
+- crawl4ai + Playwright - 用于 M3U8 URL 刷新守护进程
+  - SDK/Client: `crawl4ai.AsyncWebCrawler`
+  - 配置: 可选依赖，需 `pip install crawl4ai && playwright install`
+  - 文件: `m3u8_spider/core/m3u8_fetcher.py`
 
 ## Data Storage
 
-**MySQL 数据库:**
-- 数据库类型: MySQL
-- 驱动: PyMySQL
-- 用途: 存储下载任务队列 (`movie_info` 表)
-- 连接配置: 通过 `.env` 文件配置
-  - `MYSQL_HOST`
-  - `MYSQL_PORT`
-  - `MYSQL_USER`
-  - `MYSQL_PASSWORD`
-  - `MYSQL_DATABASE`
-- 配置位置: `m3u8_spider/config.py`
-- 管理模块: `m3u8_spider/database/manager.py`
+**Databases:**
+- MySQL - 批量下载任务队列
+  - 连接: 环境变量 `MYSQL_HOST`, `MYSQL_PORT`, `MYSQL_USER`, `MYSQL_PASSWORD`, `MYSQL_DATABASE`
+  - Client: `pymysql`（见 `m3u8_spider/database/manager.py`）
+  - 表结构: `movie_info` 表，必需字段包括 `id`, `number`, `m3u8_address`, `status`, `m3u8_update_time`
+  - 状态值: `status` 字段（0=待处理, 1=成功, 2=失败）
 
-**PostgreSQL (可选):**
-- 驱动: psycopg2-binary (可选依赖)
-- 迁移工具: `m3u8_spider/utils/migration.py`
-- 支持从 SQLite 迁移到 PostgreSQL
+- PostgreSQL（可选）:
+  - 可通过 `psycopg2-binary` 支持
+  - 配置: 需额外实现连接逻辑
 
-**SQLite (迁移源):**
-- 用于从 SQLite 数据库迁移数据到 MySQL/PostgreSQL
+**File Storage:**
+- 本地文件系统
+  - `movies/<name>/` - 下载的 TS 片段目录
+  - `mp4/` - 合并后的 MP4 文件
+  - `logs/<name>.log` - 每次下载的日志文件
 
-**文件存储:**
-- 本地文件系统存储
-- 下载目录: `movies/<name>/` - TS 片段
-- 输出目录: `mp4/` - 合并后的 MP4 文件
-- 日志目录: `logs/` - 下载日志
-
-**No 缓存系统:**
-- 项目不使用 Redis 或其他缓存
+**Caching:**
+- 无显式缓存层
+- Scrapy HTTP Cache 可启用（见 `settings.py` 第 79-85 行，默认禁用）
 
 ## Authentication & Identity
 
-**无内置认证系统:**
-- 不需要用户认证
-- 数据库使用 MySQL 用户权限控制
+**Auth Provider:**
+- 无内置认证系统
+- 外部视频源可能需要特定 headers（见 `settings.py` 第 36-40 行 `DEFAULT_REQUEST_HEADERS`）
 
 ## Monitoring & Observability
 
-**日志系统:**
-- Python `logging` 模块
-- 自定义配置: `m3u8_spider/logger.py`
-- 支持控制台 + 文件双重输出
-- 日志文件: `logs/<name>.log`
-- 格式: `%(asctime)s - %(name)s - %(levelname)s - %(message)s`
+**Error Tracking:**
+- 无专门错误追踪服务
+- 日志文件记录: `logs/<name>.log`
 
-**无外部监控服务:**
-- 不使用 Sentry, Datadog 等
+**Logs:**
+- Python `logging` 模块
+- 配置: `m3u8_spider/logger.py`
+- 格式: `%(asctime)s - %(name)s - %(levelname)s - %(message)s`
+- 双输出: 控制台 + 文件（通过 Scrapy 扩展 `M3U8FileLogExtension`）
+
+**Progress:**
+- `tqdm` 进度条 - 用于守护进程冷却倒计时（见 `auto_downloader.py`）
 
 ## CI/CD & Deployment
 
-**部署方式:**
-- 手动安装部署
-- 通过 `uv pip install -e .` 安装
+**Hosting:**
+- 本地运行为主
+- 可部署到任意 Python 环境
 
-**无 CI/CD 管道:**
-- 不使用 GitHub Actions, GitLab CI 等
-- 无自动化测试/部署
+**CI Pipeline:**
+- 无 CI 配置文件
 
-**远程同步:**
-- rsync - 通过 `cli/sync_mp4.sh` 同步 MP4 到 Jellyfin
-- 目标路径: `/share/data/jellyfin/media/jable`
-
-**守护进程管理:**
-- 通过命令行参数管理
-- 无 systemd/supervisor 集成
+**Remote Sync:**
+- rsync 同步到 Jellyfin 媒体服务器
+  - 脚本: `cli/sync_mp4.sh`
+  - 目标: 远程路径 `/share/data/jellyfin/media/jable`
+  - 用法: `./cli/sync_mp4.sh user@host`
 
 ## Environment Configuration
 
-**必需的环境变量 (MySQL):**
-```
-MYSQL_HOST=localhost
-MYSQL_PORT=3306
-MYSQL_USER=root
-MYSQL_PASSWORD=your_password
-MYSQL_DATABASE=video_db
-```
+**Required env vars:**
+- `MYSQL_HOST` - MySQL 主机地址
+- `MYSQL_PORT` - MySQL 端口（默认 3306）
+- `MYSQL_USER` - MySQL 用户名
+- `MYSQL_PASSWORD` - MySQL 密码
+- `MYSQL_DATABASE` - MySQL 数据库名
 
-**可选环境变量:**
-```
-DOWNLOAD_CHECK_INTERVAL=60      # 下载检查间隔 (秒)
-DEFAULT_CONCURRENT=32           # 默认并发数
-DEFAULT_DELAY=0                  # 请求延迟
-DOWNLOAD_COOLDOWN_SECONDS=30     # 冷却时间
-LOG_LEVEL=INFO                   # 日志级别
-M3U8_REFRESH_INTERVAL=300       # M3U8 刷新间隔 (秒)
-M3U8_REFRESH_MIN_MINUTES=10     # 刷新最小间隔 (分钟)
-```
+**Optional env vars:**
+- `DEFAULT_CONCURRENT` - 默认并发数（默认 32）
+- `DEFAULT_DELAY` - 默认下载延迟秒数（默认 0）
+- `DOWNLOAD_COOLDOWN_SECONDS` - 下载后冷却时间（默认 30）
+- `DOWNLOAD_CHECK_INTERVAL` - 守护进程检查间隔（默认 60）
+- `M3U8_REFRESH_INTERVAL` - M3U8 刷新检查间隔（默认 300）
+- `M3U8_REFRESH_MIN_MINUTES` - M3U8 刷新最小间隔分钟（默认 10）
+- `LOG_LEVEL` - 日志级别（默认 INFO）
 
-**配置文件位置:**
-- 主配置: `m3u8_spider/config.py`
-- 环境模板: `env.example`
-- 实际环境变量: `.env` (不提交到 git)
+**Secrets location:**
+- `.env` 文件（项目根目录）
+- 模板参考 `env.example`
+
+**Config module:**
+- `m3u8_spider/config.py` - 统一配置加载与默认值定义
 
 ## Webhooks & Callbacks
 
-**无 webhook 系统:**
-- 不需要接收外部回调
-- 视频下载完全由守护进程主动查询数据库驱动
+**Incoming:**
+- 无
 
-## Database Schema
+**Outgoing:**
+- 无
 
-**表: `movie_info`**
+## External Tools
 
-| 字段 | 类型 | 说明 |
-|------|------|------|
-| id | INT | 主键 |
-| number | VARCHAR | 文件名 |
-| m3u8_address | VARCHAR | M3U8 URL |
-| status | INT | 0=待处理, 1=成功, 2=失败 |
-| title | VARCHAR | 标题 (可选) |
-| provider | VARCHAR | 来源 (可选) |
-| url | VARCHAR | 页面 URL (用于刷新) |
-| m3u8_update_time | DATETIME | M3U8 更新时间 |
+**FFmpeg:**
+- 用于 TS 文件合并为 MP4
+- 检查: `utils/merger.py` 第 88-101 行 `FFmpegChecker.is_available()`
+- 安装提示:
+  - macOS: `brew install ffmpeg`
+  - Ubuntu/Debian: `sudo apt-get install ffmpeg`
+  - Windows: 从 https://ffmpeg.org/download.html 下载
+
+**Playwright（可选）:**
+- 用于 M3U8 URL 刷新功能的浏览器自动化
+- 需额外安装: `playwright install`
 
 ---
 
-*Integration audit: 2026-03-20*
+*Integration audit: 2026-03-29*
