@@ -1,94 +1,89 @@
 # Technology Stack
 
-**Analysis Date:** 2026-03-20
+**Analysis Date:** 2026-03-29
 
 ## Languages
 
 **Primary:**
-- Python 3.14+ - 整个项目基于 Python 开发
-- Bash - 用于同步脚本 `cli/sync_mp4.sh`
+- Python 3.14 - 整个项目使用，要求版本 `>=3.14`（见 `pyproject.toml` 第 14 行）
+
+**Secondary:**
+- Shell (Bash) - 用于 MP4 同步脚本 `cli/sync_mp4.sh`
 
 ## Runtime
 
 **Environment:**
-- Python 3.13.0 (开发环境检测到的版本)
-- 支持 Python 3.14+
+- Python 虚拟环境（`.venv/`）
+- 开发环境使用 `uv` 作为包管理器（版本 0.10.0）
 
 **Package Manager:**
-- uv - 现代 Python 包管理器
-- Lockfile: `uv.lock` (存在)
+- `uv` - 项目安装命令: `source .venv/bin/activate && uv pip install -e .`
+- Lockfile: 无（使用 `uv` 管理依赖）
 
 ## Frameworks
 
 **Core:**
-- Scrapy 2.11.0+ - Web 爬虫框架，用于下载 M3U8 视频片段
-- m3u8 3.5.0+ - M3U8 播放列表解析库
+- Scrapy 2.11+ - 爬虫框架，用于下载 M3U8 视频片段（见 `scrapy_project/m3u8_spider/`）
+- Twisted - Scrapy 的底层异步引擎，使用 `AsyncioSelectorReactor`（见 `settings.py` 第 89 行）
 
-**Data Processing:**
-- tqdm 4.66.0+ - 进度条显示
+**Testing:**
+- 无专门测试框架，通过运行模块验证
 
-**CLI & Utilities:**
-- python-dotenv 1.0.0+ - .env 环境变量加载
+**Build/Dev:**
+- setuptools - 构建后端（`pyproject.toml` 第 1-3 行）
+- Ruff 0.15+ - 代码格式化和 lint（`pyproject.toml` 第 19 行）
 
-**Database:**
-- PyMySQL 1.1.0+ - MySQL 数据库驱动
+## Key Dependencies
 
-**Testing/Linting:**
-- ruff 0.15.0+ - 代码检查工具 (包含 linting 和 formatting)
+**Critical:**
+- `m3u8` 3.5+ - M3U8 播放列表解析库，用于解析 HLS 视频片段（见 `spiders/m3u8_downloader.py` 第 14 行）
+- `pymysql` 1.1+ - MySQL 数据库驱动，用于守护进程的数据库操作（见 `database/manager.py` 第 13 行）
+- `requests` 2.31+ - HTTP 请求库，辅助用途
+- `python-dotenv` 1.0+ - 环境变量加载（见 `config.py` 第 20 行）
+- `tqdm` 4.66+ - 进度条显示，用于守护进程冷却倒计时（见 `auto_downloader.py` 第 25 行）
 
-**Optional Dependencies:**
-- psycopg2-binary 2.9.0+ - PostgreSQL 驱动 (可选 `postgres` 组)
-- crawl4ai 0.4.0+ - 网页爬取 (可选 `crawl` 组)
+**Infrastructure:**
+- FFmpeg - 外部依赖，用于 TS 文件合并为 MP4（见 `utils/merger.py`，需系统安装）
+- Playwright - 可选依赖，通过 `crawl4ai` 用于 M3U8 URL 刷新功能
 
-## External Tools
-
-**Required:**
-- FFmpeg 7.1+ - TS 片段合并为 MP4
-  - 命令行工具，通过 `subprocess` 调用
-  - 位置: `/opt/homebrew/bin/ffmpeg`
+**Optional:**
+- `crawl4ai` 0.4+ - 网页爬取库，用于 M3U8 URL 刷新守护进程（见 `pyproject.toml` 第 28 行 `[project.optional-dependencies]`）
+- `psycopg2-binary` 2.9+ - PostgreSQL 驱动（可选，见 `pyproject.toml` 第 26 行）
 
 ## Configuration
 
 **Environment:**
-- `.env` 文件 - MySQL 连接配置和其他环境变量
-- `.env.example` - 配置模板
-- 使用 `python-dotenv` 加载
+- `.env` 文件存储敏感配置（MySQL 连接信息、可覆盖的默认值）
+- 配置加载: `m3u8_spider/config.py` 使用 `python-dotenv` 自动加载项目根目录 `.env`
+- 配置模板: `env.example` 提供配置示例
 
 **Build:**
-- `pyproject.toml` - 项目配置和依赖定义
-- `scrapy.cfg` - Scrapy 项目配置
-
-**Linting/Formatting:**
-- ruff 配置集成在 `pyproject.toml`
-- 规则: E, F, W, I, UP, B
-- 行长度限制: 100
-- 目标 Python 版本: 3.14
-
-## Key Dependencies Summary
-
-| 包名 | 版本要求 | 用途 |
-|------|---------|------|
-| scrapy | >=2.11.0 | M3U8 下载爬虫框架 |
-| m3u8 | >=3.5.0 | M3U8 播放列表解析 |
-| requests | >=2.31.0 | HTTP 请求 (Scrapy 依赖) |
-| pymysql | >=1.1.0 | MySQL 数据库驱动 |
-| python-dotenv | >=1.0.0 | .env 环境变量加载 |
-| tqdm | >=4.66.0 | 进度条 |
-| ruff | >=0.15.0 | 代码检查 |
-| ffmpeg | 7.1+ | 视频合并 (系统依赖) |
+- `pyproject.toml` - 项目构建配置、依赖、CLI 入口点定义
+- `scrapy_project/m3u8_spider/settings.py` - Scrapy 爬虫配置
 
 ## Platform Requirements
 
 **Development:**
-- Python 3.13+
-- uv 包管理器
-- FFmpeg (系统级安装)
+- Python 3.14+ 环境
+- FFmpeg 已安装（用于合并测试）
+- MySQL 数据库（用于守护进程开发测试）
 
 **Production:**
-- 相同 Python 版本
-- FFmpeg 可执行文件在 PATH 中
-- MySQL 数据库服务器 (用于自动下载守护进程)
+- 支持 macOS/Linux/Windows
+- 远程 Jellyfin 媒体服务器（可选，用于 MP4 同步）
+- MySQL 数据库（用于批量下载守护进程）
+
+## CLI Entry Points
+
+通过 `pyproject.toml` 第 29-33 行定义的可执行命令：
+
+| 命令 | 模块 | 用途 |
+|------|------|------|
+| `m3u8-download` | `cli/main.py` | 单次下载入口 |
+| `m3u8-daemon` | `cli/daemon.py` | 批量下载守护进程 |
+| `m3u8-batch-merge` | `cli/batch_merge.py` | 批量合并 MP4 |
+| `m3u8-refresh` | `cli/m3u8_refresh_daemon.py` | M3U8 URL 刷新守护进程 |
 
 ---
 
-*Stack analysis: 2026-03-20*
+*Stack analysis: 2026-03-29*
