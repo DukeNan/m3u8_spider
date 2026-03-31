@@ -17,8 +17,12 @@ Python M3U8 视频下载器，基于 Scrapy 框架。支持两种模式：
 ## 命令
 
 ```bash
-# 安装
-source .venv/bin/activate && uv pip install -e .
+# 安装 (激活虚拟环境 + 安装项目)
+uv pip install -e .
+
+# 或分步执行
+source .venv/bin/activate
+uv pip install -e .
 
 # 下载
 m3u8-download <m3u8_url> <filename> [--concurrent 32] [--delay 0]

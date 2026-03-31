@@ -16,21 +16,21 @@
 
 ## 环境要求
 
-- Python 3.10+
+- Python 3.14+
 - uv (虚拟环境管理工具)
 - ffmpeg (用于合并视频，可选)
 - MySQL 5.7+ (用于自动下载功能，可选)
 
 ## 安装
 
-1. 激活虚拟环境：
-```bash
-source .venv/bin/activate
-```
-
-2. 安装依赖：
+1. 安装项目（自动激活虚拟环境）：
 ```bash
 uv pip install -e .
+```
+
+2. 手动激活虚拟环境（如需）：
+```bash
+source .venv/bin/activate
 ```
 
 ## 使用方法
@@ -40,6 +40,10 @@ uv pip install -e .
 ### 1. 下载 M3U8 文件
 
 ```bash
+# 安装后使用入口点
+m3u8-download <m3u8_url> <filename>
+
+# 或使用 python 模块方式
 python -m cli.main <m3u8_url> <filename>
 ```
 
@@ -49,7 +53,7 @@ python -m cli.main <m3u8_url> <filename>
 
 示例：
 ```bash
-python -m cli.main https://example.com/playlist.m3u8 my_video
+m3u8-download https://example.com/playlist.m3u8 my_video
 ```
 下载完成后文件位于 `movies/my_video/`；日志同时输出到控制台和 `logs/my_video.log`。
 
@@ -61,7 +65,7 @@ python -m cli.main https://example.com/playlist.m3u8 my_video
 
 示例：
 ```bash
-python -m cli.main https://example.com/playlist.m3u8 my_video --concurrent 16 --delay 0.1
+m3u8-download https://example.com/playlist.m3u8 my_video --concurrent 16 --delay 0.1
 ```
 
 ### 2. 校验下载文件
@@ -105,8 +109,6 @@ python -m m3u8_spider.utils.merger my_video output.mp4
 遍历 `movies/` 下所有子目录，校验 → 合并 MP4 → 可选删除源目录：
 
 ```bash
-python -m cli.batch_merge [--dry-run] [--no-delete]
-# 或安装后使用入口点
 m3u8-batch-merge [--dry-run] [--no-delete]
 ```
 
@@ -163,13 +165,10 @@ DOWNLOAD_CHECK_INTERVAL=60
 3. **启动自动下载守护进程**
 
 ```bash
-# 基本启动
-python -m cli.daemon
-# 或安装后使用入口点
 m3u8-daemon
 
 # 自定义参数
-python -m cli.daemon --concurrent 64 --delay 0.5 --check-interval 30 --cooldown 30
+m3u8-daemon --concurrent 64 --delay 0.5 --check-interval 30 --cooldown 30
 ```
 
 参数说明：
