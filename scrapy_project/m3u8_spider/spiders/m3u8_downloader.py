@@ -218,6 +218,7 @@ class M3U8DownloaderSpider(scrapy.Spider):
         download_directory: str | None = None,
         metadata_only: str | bool | None = None,
         retry_urls: list[dict] | str | None = None,
+        retry_urls_file: str | None = None,
         *args,
         **kwargs,
     ) -> None:
@@ -233,8 +234,19 @@ class M3U8DownloaderSpider(scrapy.Spider):
         self._filename = filename
         self._metadata_only = self._parse_bool_flag(metadata_only)
 
-        # 处理 retry_urls：如果是从命令行传递的 JSON 字符串，需要解析
-        if isinstance(retry_urls, str):
+        # 处理 retry_urls：大列表通过文件传递；否则为内联 JSON 字符串或列表
+        self._retry_urls: list[dict] | None = None
+        if retry_urls_file:
+            path = Path(retry_urls_file)
+            if not path.is_file():
+                raise ValueError(f"retry_urls_file 不存在: {retry_urls_file}")
+            try:
+                self._retry_urls = json.loads(path.read_text(encoding="utf-8"))
+            except json.JSONDecodeError as e:
+                raise ValueError(
+                    f"retry_urls_file 内容不是合法 JSON: {retry_urls_file}"
+                ) from e
+        elif isinstance(retry_urls, str):
             try:
                 self._retry_urls = json.loads(retry_urls)
             except (json.JSONDecodeError, TypeError):
@@ -255,8 +267,8 @@ class M3U8DownloaderSpider(scrapy.Spider):
         self._base_path = str(Path(parsed.path).parent) or ""
         self._url_resolver = UrlResolver(self._base_url, parsed.path)
 
-        if retry_urls:
-            self.logger.info(f"重试模式: 将重新下载 {len(retry_urls)} 个文件")
+        if self._retry_urls:
+            self.logger.info(f"重试模式: 将重新下载 {len(self._retry_urls)} 个文件")
         elif self._metadata_only:
             self.logger.info("元数据补齐模式: 仅下载 playlist/加密信息/密钥")
         else:
