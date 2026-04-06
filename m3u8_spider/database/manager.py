@@ -60,6 +60,9 @@ class DatabaseManager:
         database: str,
         max_retries: int = 3,
         retry_delay: float = 2.0,
+        connect_timeout: int = 10,
+        read_timeout: int = 120,
+        write_timeout: int = 120,
     ) -> None:
         """
         初始化数据库管理器
@@ -72,6 +75,9 @@ class DatabaseManager:
             database: 数据库名称
             max_retries: 连接失败最大重试次数
             retry_delay: 重试延迟（秒）
+            connect_timeout: 建立 TCP 连接超时（秒），传给 pymysql
+            read_timeout: 读超时（秒），避免 UPDATE 等长时间无响应时无限阻塞
+            write_timeout: 写超时（秒）
         """
         self._config = {
             "host": host,
@@ -82,6 +88,9 @@ class DatabaseManager:
             "charset": "utf8mb4",
             "cursorclass": DictCursor,
             "autocommit": True,
+            "connect_timeout": connect_timeout,
+            "read_timeout": read_timeout,
+            "write_timeout": write_timeout,
         }
         self._max_retries = max_retries
         self._retry_delay = retry_delay

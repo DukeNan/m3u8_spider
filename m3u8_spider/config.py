@@ -7,6 +7,8 @@
 环境变量说明（.env 或系统环境变量）:
   - MySQL（自动下载守护进程必需）:
     MYSQL_HOST, MYSQL_PORT, MYSQL_USER, MYSQL_PASSWORD, MYSQL_DATABASE
+  - MySQL 客户端超时（可选，见下方常量默认值）:
+    MYSQL_CONNECT_TIMEOUT, MYSQL_READ_TIMEOUT, MYSQL_WRITE_TIMEOUT
   - 可覆盖的默认值:
     DEFAULT_CONCURRENT, DEFAULT_DELAY, DOWNLOAD_COOLDOWN_SECONDS,
     DOWNLOAD_CHECK_INTERVAL, LOG_LEVEL
@@ -96,6 +98,25 @@ M3U8_REFRESH_INTERVAL: int = int(
 )
 M3U8_REFRESH_MIN_MINUTES: int = int(
     os.getenv("M3U8_REFRESH_MIN_MINUTES", str(_DEFAULT_M3U8_REFRESH_MIN_MINUTES))
+)
+
+
+# ---------------------------------------------------------------------------
+# MySQL 客户端超时（秒，可被环境变量覆盖；避免 UPDATE 等操作无限阻塞）
+# ---------------------------------------------------------------------------
+
+_DEFAULT_MYSQL_CONNECT_TIMEOUT = 10
+_DEFAULT_MYSQL_READ_TIMEOUT = 120
+_DEFAULT_MYSQL_WRITE_TIMEOUT = 120
+
+MYSQL_CONNECT_TIMEOUT: int = int(
+    os.getenv("MYSQL_CONNECT_TIMEOUT", str(_DEFAULT_MYSQL_CONNECT_TIMEOUT))
+)
+MYSQL_READ_TIMEOUT: int = int(
+    os.getenv("MYSQL_READ_TIMEOUT", str(_DEFAULT_MYSQL_READ_TIMEOUT))
+)
+MYSQL_WRITE_TIMEOUT: int = int(
+    os.getenv("MYSQL_WRITE_TIMEOUT", str(_DEFAULT_MYSQL_WRITE_TIMEOUT))
 )
 
 

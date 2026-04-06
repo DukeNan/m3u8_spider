@@ -17,6 +17,9 @@ from m3u8_spider.config import (
     DEFAULT_DELAY,
     DOWNLOAD_COOLDOWN_SECONDS,
     INVALID_FILENAME_CHARS,
+    MYSQL_CONNECT_TIMEOUT,
+    MYSQL_READ_TIMEOUT,
+    MYSQL_WRITE_TIMEOUT,
 )
 from m3u8_spider.database.manager import DatabaseManager, DownloadTask
 from m3u8_spider.logger import get_logger
@@ -101,6 +104,9 @@ class AutoDownloader:
             user=config.db_user,
             password=config.db_password,
             database=config.db_database,
+            connect_timeout=MYSQL_CONNECT_TIMEOUT,
+            read_timeout=MYSQL_READ_TIMEOUT,
+            write_timeout=MYSQL_WRITE_TIMEOUT,
         )
         self._stats = DownloadStats()
         self._running = True
@@ -288,6 +294,9 @@ class AutoDownloader:
                 logger.info(f"✅ 校验通过: {filename}")
                 if recovery_result.retry_rounds > 0:
                     logger.info(f"   重试轮次: {recovery_result.retry_rounds}")
+                logger.info(
+                    f"💾 正在写入数据库 (task_id={task.id}, status=1)..."
+                )
                 self._db_manager.update_task_status(
                     task.id, status=1, update_m3u8_time=True
                 )
@@ -298,6 +307,9 @@ class AutoDownloader:
                 failed_count = len(result.get("failed_files", []))
                 logger.error(f"   失败文件数: {failed_count}")
                 logger.error("   已达到最大重试轮次: 3")
+                logger.info(
+                    f"💾 正在写入数据库 (task_id={task.id}, status=2)..."
+                )
                 self._db_manager.update_task_status(
                     task.id, status=2, update_m3u8_time=True
                 )
