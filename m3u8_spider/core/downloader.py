@@ -6,8 +6,10 @@ Scrapy 管理模块
 
 from __future__ import annotations
 
+import json
 import subprocess
 import sys
+import tempfile
 from base64 import urlsafe_b64encode
 from dataclasses import dataclass
 from pathlib import Path
@@ -24,6 +26,9 @@ from m3u8_spider.logger import get_logger
 
 # 初始化 logger
 logger = get_logger(__name__)
+
+# 超过此长度的 retry_urls JSON 改写入临时文件，避免 subprocess「参数列表过长」(ARG_MAX)
+_MAX_RETRY_URLS_JSON_BYTES = 48_000
 
 
 # ---------------------------------------------------------------------------
@@ -141,12 +146,25 @@ def run_scrapy(config: DownloadConfig) -> None:
         f"M3U8_LOG_FILE={log_file}",
     ]
 
-    # 如果存在 retry_urls，需要序列化为 JSON 字符串传递
+    retry_urls_temp: Path | None = None
+    # 如果存在 retry_urls，序列化后通过 -a 或临时文件传递（大列表避免 ARG_MAX）
     if config.retry_urls:
-        import json
-
         retry_urls_json = json.dumps(config.retry_urls)
-        cmd.extend(["-a", f"retry_urls={retry_urls_json}"])
+        if len(retry_urls_json.encode("utf-8")) > _MAX_RETRY_URLS_JSON_BYTES:
+            config.download_dir.mkdir(parents=True, exist_ok=True)
+            with tempfile.NamedTemporaryFile(
+                mode="w",
+                encoding="utf-8",
+                suffix=".json",
+                prefix="retry_urls_",
+                delete=False,
+                dir=config.download_dir,
+            ) as tmp:
+                tmp.write(retry_urls_json)
+                retry_urls_temp = Path(tmp.name)
+            cmd.extend(["-a", f"retry_urls_file={retry_urls_temp}"])
+        else:
+            cmd.extend(["-a", f"retry_urls={retry_urls_json}"])
 
     if config.metadata_only:
         cmd.extend(["-a", "metadata_only=1"])
@@ -154,14 +172,21 @@ def run_scrapy(config: DownloadConfig) -> None:
     logger.info(f"执行命令: {' '.join(cmd)}")
     logger.info(f"日志文件: {log_file}")
 
-    # 在 scrapy_project 目录下运行命令
-    # 不捕获输出，让日志实时显示在控制台
-    # 同时通过 M3U8FileLogExtension 将日志写入文件（控制台+文件双输出）
-    subprocess.run(
-        cmd,
-        cwd=str(config.scrapy_project_dir),
-        check=True,
-        # 不捕获输出，确保日志实时显示在控制台
-        # Scrapy 的 M3U8FileLogExtension 会同时将日志写入文件
-        capture_output=False,
-    )
+    try:
+        # 在 scrapy_project 目录下运行命令
+        # 不捕获输出，让日志实时显示在控制台
+        # 同时通过 M3U8FileLogExtension 将日志写入文件（控制台+文件双输出）
+        subprocess.run(
+            cmd,
+            cwd=str(config.scrapy_project_dir),
+            check=True,
+            # 不捕获输出，确保日志实时显示在控制台
+            # Scrapy 的 M3U8FileLogExtension 会同时将日志写入文件
+            capture_output=False,
+        )
+    finally:
+        if retry_urls_temp is not None:
+            try:
+                retry_urls_temp.unlink(missing_ok=True)
+            except OSError:
+                logger.warning("无法删除临时 retry_urls 文件: %s", retry_urls_temp)
