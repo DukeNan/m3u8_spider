@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import argparse
 import sys
+import traceback
 
 from m3u8_spider.config import (
     DEFAULT_CONCURRENT,
@@ -139,9 +140,7 @@ def main() -> None:
         logger.warning("\n\n⚠️  收到键盘中断")
         sys.exit(0)
     except Exception as e:
-        logger.error(f"\n❌ 发生错误: {e}")
-        import traceback
-
+        logger.exception(f"\n❌ 发生错误: {e}")
         traceback.print_exc()
         sys.exit(1)
 

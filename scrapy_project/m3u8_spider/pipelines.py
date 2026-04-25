@@ -53,7 +53,7 @@ class M3U8FilePipeline(FilesPipeline):
                 try:
                     with open(content_lengths_file, "r", encoding="utf-8") as f:
                         self.content_lengths = json.load(f)
-                except Exception:
+                except (json.JSONDecodeError, OSError):
                     self.content_lengths = {}
 
     def close_spider(self, spider):
@@ -65,7 +65,7 @@ class M3U8FilePipeline(FilesPipeline):
             try:
                 with open(content_lengths_file, "w", encoding="utf-8") as f:
                     json.dump(self.content_lengths, f, indent=2, ensure_ascii=False)
-            except Exception as e:
+            except (json.JSONDecodeError, OSError) as e:
                 if hasattr(spider, "logger"):
                     spider.logger.warning(f"无法保存Content-Length信息: {e}")
 
@@ -130,7 +130,7 @@ class M3U8FilePipeline(FilesPipeline):
                 filename = item.get("filename", "")
                 if filename:
                     self.content_lengths[filename] = length
-            except Exception:
+            except (ValueError, KeyError):
                 pass
 
         # 调用父类方法继续处理

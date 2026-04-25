@@ -9,6 +9,7 @@ from __future__ import annotations
 import signal
 import sys
 import time
+import traceback
 from dataclasses import dataclass
 
 from m3u8_spider.config import (
@@ -121,9 +122,7 @@ class M3U8Refresher:
         try:
             self._main_loop()
         except Exception as e:
-            logger.error(f"❌ 发生未预期的错误: {e}")
-            import traceback
-
+            logger.exception(f"❌ 发生未预期的错误: {e}")
             traceback.print_exc()
         finally:
             self._cleanup()
@@ -201,7 +200,7 @@ class M3U8Refresher:
             logger.error(f"❌ 依赖未安装: {e}")
             raise
         except Exception as e:
-            logger.error(f"❌ [{task.number}] 处理失败: {e}")
+            logger.exception(f"❌ [{task.number}] 处理失败: {e}")
             self._stats.record_error()
 
     def _cleanup(self) -> None:

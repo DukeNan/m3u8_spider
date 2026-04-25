@@ -15,14 +15,13 @@ requires-python = ">=3.14"
 dependencies = [
     "scrapy>=2.11.0",
     "m3u8>=3.5.0",
-    "requests>=2.31.0",
-    "ruff>=0.15.0",
     "pymysql>=1.1.0",
     "python-dotenv>=1.0.0",
     "tqdm>=4.66.0",
 ]
 
 [project.optional-dependencies]
+dev = ["ruff>=0.15.0"]
 postgres = ["psycopg2-binary>=2.9.0"]
 crawl = ["crawl4ai>=0.4.0"]
 
@@ -40,4 +39,6 @@ line-length = 100
 target-version = "py314"
 
 [tool.ruff.lint]
-select = ["E", "F", "W", "I", "UP", "B"]
+select = ["E", "F", "W", "I", "UP", "B", "S", "RUF", "SIM"]
+
+ignore = ["RUF001", "RUF002", "RUF003"]

@@ -176,7 +176,7 @@ def run_scrapy(config: DownloadConfig) -> None:
         # 在 scrapy_project 目录下运行命令
         # 不捕获输出，让日志实时显示在控制台
         # 同时通过 M3U8FileLogExtension 将日志写入文件（控制台+文件双输出）
-        subprocess.run(
+        subprocess.run(  # noqa: S603
             cmd,
             cwd=str(config.scrapy_project_dir),
             check=True,

@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import argparse
 import sys
+import traceback
 
 from m3u8_spider.config import (
     M3U8_REFRESH_INTERVAL,
@@ -107,9 +108,7 @@ def main() -> None:
         logger.error(f"\n❌ 依赖未安装: {e}")
         sys.exit(1)
     except Exception as e:
-        logger.error(f"\n❌ 发生错误: {e}")
-        import traceback
-
+        logger.exception(f"\n❌ 发生错误: {e}")
         traceback.print_exc()
         sys.exit(1)
 

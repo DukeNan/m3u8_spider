@@ -14,7 +14,6 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from m3u8_spider.config import (
-    DEFAULT_BASE_DIR,
     DEFAULT_KEY_FILE,
     DEFAULT_MP4_DIR,
     ENCRYPTION_INFO_NAME,
@@ -22,6 +21,7 @@ from m3u8_spider.config import (
     TEMP_PLAYLIST_NAME,
 )
 from m3u8_spider.logger import get_logger
+from m3u8_spider.utils.helpers import resolve_directory
 
 # 初始化 logger
 logger = get_logger(__name__)
@@ -30,18 +30,6 @@ logger = get_logger(__name__)
 # ---------------------------------------------------------------------------
 # 数据模型
 # ---------------------------------------------------------------------------
-
-
-def _resolve_directory(arg: str) -> str:
-    """
-    解析目录参数：绝对路径或含路径分隔符时原样使用，否则视为视频名，解析为 movies/<name>。
-    """
-    if Path(arg).is_absolute():
-        return arg
-    if "/" in arg or "\\" in arg:
-        return arg
-    project_root = Path(__file__).resolve().parent.parent.parent
-    return str(project_root / DEFAULT_BASE_DIR / arg)
 
 
 @dataclass
@@ -70,7 +58,8 @@ class EncryptionInfo:
         try:
             with open(path, "r", encoding="utf-8") as f:
                 data = json.load(f)
-        except Exception:
+        except (json.JSONDecodeError, OSError):
+            logger.exception("加载 encryption_info.json 失败")
             return None
         return cls(
             is_encrypted=data.get("is_encrypted", False),
@@ -93,7 +82,7 @@ class FFmpegChecker:
         """检查 ffmpeg 是否安装"""
         try:
             subprocess.run(
-                ["ffmpeg", "-version"],
+                ["ffmpeg", "-version"],  # noqa: S603, S607
                 capture_output=True,
                 check=True,
             )
@@ -111,13 +100,16 @@ class FFmpegChecker:
         logger.error("  Windows: 从 https://ffmpeg.org/download.html 下载")
 
 
-def _ts_sort_key(filepath: str) -> int | str:
-    """排序键：优先按文件名中的数字，否则按文件名"""
+def _ts_sort_key(filepath: str) -> tuple:
+    """排序键：按文件名中的所有数字组排序，无数字时按原文件名。"""
     filename = Path(filepath).name
     numbers = re.findall(r"\d+", filename)
     if numbers:
-        return int(numbers[0])
-    return filename
+        try:
+            return (0, tuple(int(n) for n in numbers), filename)
+        except ValueError:
+            pass
+    return (1, 0, filename)
 
 
 class TSFileCollector:
@@ -187,7 +179,7 @@ def _create_file_list(ts_files: list[str], list_filename: str) -> str:
     with open(list_path, "w", encoding="utf-8") as f:
         for ts_file in ts_files:
             abs_path = str(Path(ts_file).resolve())
-            abs_path = abs_path.replace("'", "'\\''")
+            abs_path = abs_path.replace("'", "\\'")
             f.write(f"file '{abs_path}'\n")
     return str(list_path)
 
@@ -255,8 +247,8 @@ class MP4Merger:
             logger.error(f"错误: ffmpeg执行失败: {e}")
             self._cleanup(temp_files)
             return False
-        except Exception as e:
-            logger.error(f"错误: {e}")
+        except OSError as e:
+            logger.exception(f"错误: {e}")
             self._cleanup(temp_files)
             return False
 
@@ -337,7 +329,7 @@ class MP4Merger:
         ]
         logger.info("\n开始合并加密文件...")
         logger.info(f"命令: {' '.join(cmd)}\n")
-        subprocess.run(cmd, check=True, capture_output=False, text=True)
+        subprocess.run(cmd, check=True, capture_output=False, text=True)  # noqa: S603
         return [temp_m3u8]
 
     def _run_concat(
@@ -365,7 +357,7 @@ class MP4Merger:
         ]
         logger.info("\n开始合并...")
         logger.info(f"命令: {' '.join(cmd)}\n")
-        subprocess.run(cmd, check=True, capture_output=False, text=True)
+        subprocess.run(cmd, check=True, capture_output=False, text=True)  # noqa: S603
         return [list_file]
 
     @staticmethod
@@ -418,7 +410,7 @@ def main() -> None:
         logger.error("      python -m m3u8_spider.utils.merger ./my_video output.mp4")
         sys.exit(1)
 
-    directory = _resolve_directory(sys.argv[1])
+    directory = resolve_directory(sys.argv[1])
     output_file = sys.argv[2] if len(sys.argv) > 2 else None
     success = merge_ts_files(directory, output_file)
     sys.exit(0 if success else 1)

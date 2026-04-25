@@ -9,6 +9,7 @@ from __future__ import annotations
 import signal
 import sys
 import time
+import traceback
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -21,7 +22,7 @@ from m3u8_spider.config import (
     MYSQL_READ_TIMEOUT,
     MYSQL_WRITE_TIMEOUT,
 )
-from m3u8_spider.database.manager import DatabaseManager, DownloadTask
+from m3u8_spider.database.manager import DatabaseManager, DownloadTask, TaskStatus
 from m3u8_spider.logger import get_logger
 from m3u8_spider.core.recovery import recover_download
 from m3u8_spider.core.downloader import DownloadConfig
@@ -139,9 +140,7 @@ class AutoDownloader:
         try:
             self._main_loop()
         except Exception as e:
-            logger.error(f"❌ 发生未预期的错误: {e}")
-            import traceback
-
+            logger.exception(f"❌ 发生未预期的错误: {e}")
             traceback.print_exc()
         finally:
             self._cleanup()
@@ -298,7 +297,7 @@ class AutoDownloader:
                     f"💾 正在写入数据库 (task_id={task.id}, status=1)..."
                 )
                 self._db_manager.update_task_status(
-                    task.id, status=1, update_m3u8_time=True
+                    task.id, status=TaskStatus.SUCCESS, update_m3u8_time=True
                 )
                 self._stats.record_success()
                 logger.info("✅ 已更新数据库状态: status=1 (成功)")
@@ -311,19 +310,17 @@ class AutoDownloader:
                     f"💾 正在写入数据库 (task_id={task.id}, status=2)..."
                 )
                 self._db_manager.update_task_status(
-                    task.id, status=2, update_m3u8_time=True
+                    task.id, status=TaskStatus.FAILED, update_m3u8_time=True
                 )
                 self._stats.record_failure()
                 logger.warning("⚠️  已更新数据库状态: status=2 (失败)")
 
         except Exception as e:
-            logger.error(f"❌ 处理任务失败 (ID={task.id}): {e}")
-            import traceback
-
+            logger.exception(f"❌ 处理任务失败 (ID={task.id}): {e}")
             traceback.print_exc()
 
             # 更新为失败状态
-            self._db_manager.update_task_status(task.id, status=2)
+            self._db_manager.update_task_status(task.id, status=TaskStatus.FAILED)
             self._stats.record_failure()
             logger.warning("⚠️  已更新数据库状态: status=2 (异常失败)")
 

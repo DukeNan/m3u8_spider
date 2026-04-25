@@ -9,6 +9,7 @@ from __future__ import annotations
 import time
 from dataclasses import dataclass
 from datetime import datetime
+from enum import IntEnum
 
 import pymysql
 from pymysql.cursors import DictCursor
@@ -20,8 +21,14 @@ logger = get_logger(__name__)
 
 
 # ---------------------------------------------------------------------------
-# 数据模型
+# 枚举与数据模型
 # ---------------------------------------------------------------------------
+
+
+class TaskStatus(IntEnum):
+    PENDING = 0
+    SUCCESS = 1
+    FAILED = 2
 
 
 @dataclass
@@ -128,7 +135,7 @@ class DatabaseManager:
             try:
                 self._connection.close()
                 logger.info("✅ 数据库连接已关闭")
-            except Exception as e:
+            except pymysql.Error as e:
                 logger.warning(f"⚠️  关闭数据库连接时出错: {e}")
             finally:
                 self._connection = None
@@ -146,7 +153,7 @@ class DatabaseManager:
         try:
             self._connection.ping(reconnect=True)
             return True
-        except Exception:
+        except pymysql.Error:
             logger.warning("⚠️  数据库连接已断开，尝试重连...")
             return self.connect()
 
@@ -168,11 +175,11 @@ class DatabaseManager:
                 sql = """
                     SELECT id, number, m3u8_address, status, title, provider
                     FROM movie_info
-                    WHERE status = 0 AND m3u8_address IS NOT NULL AND m3u8_address != ''
+                    WHERE status = %s AND m3u8_address IS NOT NULL AND m3u8_address != ''
                     ORDER BY id ASC
                     LIMIT %s
                 """
-                cursor.execute(sql, (limit,))
+                cursor.execute(sql, (TaskStatus.PENDING, limit))
                 rows = cursor.fetchall()
 
                 tasks = []
@@ -194,7 +201,7 @@ class DatabaseManager:
     def update_task_status(
         self,
         task_id: int,
-        status: int,
+        status: int | TaskStatus,
         update_m3u8_time: bool = False,
     ) -> bool:
         """
@@ -202,7 +209,7 @@ class DatabaseManager:
 
         Args:
             task_id: 任务 ID
-            status: 新状态 (0=未下载, 1=下载成功, 2=下载失败)
+            status: 新状态 (TaskStatus.PENDING/SUCCESS/FAILED)
             update_m3u8_time: 是否同时更新 m3u8_update_time
 
         Returns:
@@ -294,13 +301,13 @@ class DatabaseManager:
                 sql = """
                     SELECT id, number, m3u8_address, status, title, provider, url, m3u8_update_time
                     FROM movie_info
-                    WHERE status != 1
+                    WHERE status != %s
                       AND url IS NOT NULL AND url != ''
                       AND (m3u8_update_time IS NULL OR m3u8_update_time < DATE_SUB(NOW(), INTERVAL %s MINUTE))
                     ORDER BY id ASC
                     LIMIT %s
                 """
-                cursor.execute(sql, (min_minutes_since_update, limit))
+                cursor.execute(sql, (TaskStatus.SUCCESS, min_minutes_since_update, limit))
                 rows = cursor.fetchall()
 
                 tasks = []
@@ -363,13 +370,13 @@ class DatabaseManager:
                 sql = """
                     SELECT
                         COUNT(*) as total,
-                        SUM(CASE WHEN status = 0 THEN 1 ELSE 0 END) as pending,
-                        SUM(CASE WHEN status = 1 THEN 1 ELSE 0 END) as success,
-                        SUM(CASE WHEN status = 2 THEN 1 ELSE 0 END) as failed
+                        SUM(CASE WHEN status = %s THEN 1 ELSE 0 END) as pending,
+                        SUM(CASE WHEN status = %s THEN 1 ELSE 0 END) as success,
+                        SUM(CASE WHEN status = %s THEN 1 ELSE 0 END) as failed
                     FROM movie_info
                     WHERE m3u8_address IS NOT NULL AND m3u8_address != ''
                 """
-                cursor.execute(sql)
+                cursor.execute(sql, (TaskStatus.PENDING, TaskStatus.SUCCESS, TaskStatus.FAILED))
                 row = cursor.fetchone()
 
                 return {
@@ -384,7 +391,11 @@ class DatabaseManager:
 
     def __enter__(self) -> DatabaseManager:
         """上下文管理器：进入"""
-        self.connect()
+        if not self.connect():
+            raise ConnectionError(
+                f"无法连接数据库: "
+                f"{self._config['host']}:{self._config['port']}/{self._config['database']}"
+            )
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb) -> None:
