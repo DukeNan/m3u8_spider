@@ -155,6 +155,9 @@ $RECYCLE.BIN/
 .directory
 .Trash-*
 
+# Ruff cache
+.ruff_cache/
+
 # Project specific
 # Default download output directory
 movies/
@@ -171,6 +174,7 @@ mp4/
 
 # Temporary files
 file_list.txt
+temp_playlist.m3u8
 *.tmp
 *.temp
 

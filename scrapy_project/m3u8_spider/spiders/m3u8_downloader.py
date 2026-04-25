@@ -297,8 +297,8 @@ class M3U8DownloaderSpider(scrapy.Spider):
         """解码通过命令行传递的 m3u8_url_b64。"""
         try:
             return urlsafe_b64decode(value.encode("ascii")).decode("utf-8")
-        except Exception:
-            self.logger.warning("无法解析 m3u8_url_b64，回退到原始 m3u8_url 参数")
+        except (ValueError, UnicodeDecodeError) as e:
+            self.logger.warning(f"无法解析 m3u8_url_b64: {e}，回退到原始 m3u8_url 参数")
             return None
 
     def start_requests(self):
@@ -340,7 +340,7 @@ class M3U8DownloaderSpider(scrapy.Spider):
                 return
             yield from self._yield_segment_items_from_playlist(playlist)
         except Exception as e:
-            self.logger.error(f"解析M3U8文件失败: {e}")
+            self.logger.exception(f"解析M3U8文件失败: {e}")
             # m3u8 库解析失败时回退到手动解析
             yield from self._parse_m3u8_manual(response.text)
 

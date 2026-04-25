@@ -153,7 +153,8 @@ def _load_encryption_info(download_dir: Path) -> dict:
         with open(path, "r", encoding="utf-8") as f:
             data = json.load(f)
             return data if isinstance(data, dict) else {}
-    except Exception:
+    except (json.JSONDecodeError, OSError):
+        logger.exception("加载 encryption_info.json 失败")
         return {}
 
 

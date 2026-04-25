@@ -11,23 +11,11 @@ import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from m3u8_spider.config import DEFAULT_BASE_DIR
 from m3u8_spider.logger import get_logger
+from m3u8_spider.utils.helpers import resolve_directory
 
 # 初始化 logger
 logger = get_logger(__name__)
-
-
-def _resolve_directory(arg: str) -> str:
-    """
-    解析目录参数：绝对路径或含路径分隔符时原样使用，否则视为视频名，解析为 movies/<name>。
-    """
-    if Path(arg).is_absolute():
-        return arg
-    if "/" in arg or "\\" in arg:
-        return arg
-    project_root = Path(__file__).resolve().parent.parent.parent
-    return str(project_root / DEFAULT_BASE_DIR / arg)
 
 
 # ---------------------------------------------------------------------------
@@ -167,7 +155,8 @@ class ContentLengthLoader:
         try:
             with open(path, "r", encoding="utf-8") as f:
                 return json.load(f)
-        except Exception:
+        except (json.JSONDecodeError, OSError):
+            logger.exception("加载 content_lengths.json 失败")
             return {}
 
 
@@ -184,33 +173,14 @@ def _get_file_size(filepath: str) -> int:
         return 0
 
 
-def _validate_content_length(filepath: str, expected_length: int) -> bool:
-    """
-    校验文件大小与 Content-Length 是否一致
-
-    Args:
-        filepath: 文件路径
-        expected_length: 预期的 Content-Length
-
-    Returns:
-        文件大小是否完整
-    """
-    try:
-        actual_size = Path(filepath).stat().st_size
-
-        # 如果实际大小小于预期，则不完整
-        if actual_size < expected_length:
-            return False
-
-        # 允许实际大小略大于预期（某些服务器可能有填充）
-        # 但不应该大太多（最多 1% 或 1KB）
-        max_allowed = expected_length + max(expected_length * 0.01, 1024)
-        if actual_size > max_allowed:
-            return False
-
-        return True
-    except Exception:
+def _validate_content_length(actual_size: int, expected_length: int) -> bool:
+    """校验实际文件大小与 Content-Length 是否一致（允许 1% 或 1KB 的余量）。"""
+    if actual_size < expected_length:
         return False
+    max_allowed = expected_length + max(expected_length * 0.01, 1024)
+    if actual_size > max_allowed:
+        return False
+    return True
 
 
 class DownloadValidator:
@@ -297,12 +267,11 @@ class DownloadValidator:
         zero_size: list[str] = []
         incomplete: list[str] = []
         for name in sorted(ts_files):
-            path = str(Path(self._directory) / name)
             size = file_sizes[name]
             if size == 0:
                 zero_size.append(name)
             elif name in content_lengths:
-                if not _validate_content_length(path, content_lengths[name]):
+                if not _validate_content_length(size, content_lengths[name]):
                     incomplete.append(name)
         return zero_size, incomplete
 
@@ -391,7 +360,7 @@ def main() -> None:
         logger.error("      python -m m3u8_spider.core.validator ./my_video")
         sys.exit(1)
 
-    directory = _resolve_directory(sys.argv[1])
+    directory = resolve_directory(sys.argv[1])
     is_complete, _result = validate_downloads(directory)
     sys.exit(0 if is_complete else 1)
 
