@@ -21,7 +21,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["ruff>=0.15.0"]
+dev = ["ruff>=0.15.0", "pytest>=8.0", "pytest-mock>=3.14"]
 postgres = ["psycopg2-binary>=2.9.0"]
 crawl = ["crawl4ai>=0.4.0"]
 
@@ -30,6 +30,17 @@ m3u8-download = "cli.main:main"
 m3u8-daemon = "cli.daemon:main"
 m3u8-batch-merge = "cli.batch_merge:main"
 m3u8-refresh = "cli.m3u8_refresh_daemon:main"
+
+[dependency-groups]
+dev = [
+    "pytest-cov>=7.1.0",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_functions = ["test_*"]
+filterwarnings = ["ignore::DeprecationWarning"]
 
 [tool.pyright]
 extraPaths = ["scrapy_project"]
