@@ -13,6 +13,7 @@ class M3U8Item(scrapy.Item):
     filename = scrapy.Field()  # 保存的文件名
     directory = scrapy.Field()  # 保存目录
     segment_index = scrapy.Field()  # 片段索引
+    force_download = scrapy.Field()  # 恢复重试时绕过 FilesPipeline 的本地缓存
     file_path = scrapy.Field()  # 文件保存的完整路径（由pipeline设置）
     file_status = (
         scrapy.Field()

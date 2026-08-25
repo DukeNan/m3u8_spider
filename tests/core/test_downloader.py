@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import pytest
 
+from m3u8_spider.config import DEFAULT_DELAY
 from m3u8_spider.core.downloader import DownloadConfig
 
 
@@ -82,6 +83,6 @@ class TestDownloadConfigProperties:
         config = DownloadConfig(m3u8_url="https://example.com/p.m3u8", filename="test")
         assert config.concurrent == 32
 
-    def test_default_delay_is_zero(self) -> None:
+    def test_default_delay_uses_configured_value(self) -> None:
         config = DownloadConfig(m3u8_url="https://example.com/p.m3u8", filename="test")
-        assert config.delay == 0.0
+        assert config.delay == DEFAULT_DELAY

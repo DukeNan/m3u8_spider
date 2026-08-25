@@ -301,16 +301,32 @@ class M3U8DownloaderSpider(scrapy.Spider):
             self.logger.warning(f"无法解析 m3u8_url_b64: {e}，回退到原始 m3u8_url 参数")
             return None
 
-    def start_requests(self):
-        """首轮请求：重试模式直接产出片段项，否则请求 M3U8 地址。"""
+    async def start(self):
+        """启动爬虫，并在重试模式下调度可产出 Item 的请求。
+
+        无论 ``start()`` 还是 ``start_requests()``，起始迭代器中的 Item 都
+        不会进入 item pipeline。重试文件必须从一个 Request callback 产出，
+        才会交给 ``M3U8FilePipeline`` 调度下载。
+        """
         if self._retry_urls:
-            yield from self._yield_retry_items()
-        else:
             yield Request(
                 url=self._m3u8_url,
-                callback=self.parse_m3u8,
+                callback=self._parse_retry_seed,
                 dont_filter=True,
             )
+            return
+
+        # 保留 start_requests()，以兼容 Scrapy 2.13 之前的版本。
+        async for item_or_request in super().start():
+            yield item_or_request
+
+    def start_requests(self):
+        """非重试模式下请求 M3U8 播放列表（兼容旧版 Scrapy）。"""
+        yield Request(
+            url=self._m3u8_url,
+            callback=self.parse_m3u8,
+            dont_filter=True,
+        )
 
     def _yield_retry_items(self):
         """重试模式：按 retry_urls 直接产出 M3U8Item。"""
@@ -324,7 +340,12 @@ class M3U8DownloaderSpider(scrapy.Spider):
             item["filename"] = url_info["filename"]
             item["directory"] = self.download_directory
             item["segment_index"] = url_info.get("index", 0)
+            item["force_download"] = True
             yield item
+
+    def _parse_retry_seed(self, response):
+        """从种子请求回调产出重试 Item，使其经过 Item Pipeline。"""
+        yield from self._yield_retry_items()
 
     def parse_m3u8(self, response):
         """解析 M3U8 响应：保存 playlist、检测加密、写出加密信息、按需请求密钥、产出片段项。"""

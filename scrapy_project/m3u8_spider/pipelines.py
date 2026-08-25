@@ -88,7 +88,16 @@ class M3U8FilePipeline(FilesPipeline):
 
     def get_media_requests(self, item, info):
         """生成下载请求"""
-        yield Request(item["url"], meta={"item": item})
+        yield Request(
+            item["url"],
+            meta={"item": item, "force_download": item.get("force_download", False)},
+        )
+
+    def media_to_download(self, request, info, *, item=None):
+        """恢复重试时跳过本地缓存，强制重新获取校验失败的片段。"""
+        if request.meta.get("force_download"):
+            return None
+        return super().media_to_download(request, info, item=item)
 
     def item_completed(self, results, item, info):
         """文件下载完成后的处理"""
