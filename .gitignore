@@ -188,5 +188,5 @@ playlist.txt
 # Claude Code
 .claude/
 
-# Graphify cache
-graphify-out/
+# CodeGraph index
+.codegraph/
