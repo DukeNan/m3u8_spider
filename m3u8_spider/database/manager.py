@@ -355,6 +355,32 @@ class DatabaseManager:
             logger.error(f"❌ 更新 M3U8 地址失败 (ID={task_id}): {e}")
             return False
 
+    def insert_missing_page_urls(self, records: list[tuple[str, str]]) -> tuple[int, int]:
+        """插入不存在的影片编号和页面 URL，返回 (新增数, 跳过数)。"""
+        if not self._ensure_connection() or not self._connection:
+            return 0, len(records)
+
+        sql = """
+            INSERT INTO movie_info (number, url, status, m3u8_address, m3u8_update_time)
+            SELECT %s, %s, %s, NULL, NULL
+            WHERE NOT EXISTS (
+                SELECT 1 FROM movie_info WHERE number = %s
+            )
+        """
+        inserted = 0
+        try:
+            self._connection.begin()
+            with self._connection.cursor() as cursor:
+                for number, url in records:
+                    cursor.execute(sql, (number, url, TaskStatus.PENDING, number))
+                    inserted += cursor.rowcount
+            self._connection.commit()
+            return inserted, len(records) - inserted
+        except pymysql.Error as e:
+            self._connection.rollback()
+            logger.error(f"❌ 导入页面 URL 失败: {e}")
+            return 0, len(records)
+
     def get_statistics(self) -> dict[str, int]:
         """
         获取下载统计信息

@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import re
+from urllib.parse import urljoin
 
 
 def find_m3u8_url(html: str) -> str | None:
@@ -20,7 +21,10 @@ def find_m3u8_url(html: str) -> str | None:
     Returns:
         第一个匹配的 M3U8 URL，无匹配返回 None
     """
-    pattern = r'src=.*?(https?:\/\/[^\s\'"]+\.m3u8(?:\?[^\s\'"]*)?|\/[^\s\'"]+\.m3u8(?:\?[^\s\'"]*)?)'
+    pattern = (
+        r'(https?:\/\/[^\s\'"<>]+\.m3u8(?:\?[^\s\'"<>]*)?'
+        r'|\/[^\s\'"<>]+\.m3u8(?:\?[^\s\'"<>]*)?)'
+    )
     matches = re.findall(pattern, html)
     return matches[0] if matches else None
 
@@ -54,9 +58,10 @@ def fetch_m3u8_from_page(page_url: str) -> str | None:
                 verbose=False,
             )
         ) as crawler:
-            results = await crawler.arun(url=page_url)
-            if results and results[0].success and results[0].html:
-                return find_m3u8_url(results[0].html)
+            result = await crawler.arun(url=page_url)
+            if result.success and result.html:
+                m3u8_url = find_m3u8_url(result.html)
+                return urljoin(page_url, m3u8_url) if m3u8_url else None
         return None
 
     return asyncio.run(_fetch())

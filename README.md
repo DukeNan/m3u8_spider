@@ -205,6 +205,56 @@ m3u8-daemon --concurrent 64 --delay 0.5 --check-interval 30 --cooldown 30
 - **[AUTO_DOWNLOAD_README.md](AUTO_DOWNLOAD_README.md)**: 完整使用手册（500+ 行）
 - **[TESTING.md](TESTING.md)**: 详细测试步骤（400+ 行）
 
+### 7. 刷新 M3U8 地址（可选）
+
+当数据库中的 M3U8 地址会过期时，可由守护进程从影片详情页的 `url` 字段重新解析并写回 `m3u8_address`。
+
+1. 安装可选依赖并安装浏览器：
+
+```bash
+uv pip install -e ".[crawl]"
+uv run playwright install chromium
+```
+
+2. 在 `.env` 中配置 MySQL；可选设置：
+
+```env
+M3U8_REFRESH_INTERVAL=300
+M3U8_REFRESH_MIN_MINUTES=10
+```
+
+3. 启动刷新守护进程：
+
+```bash
+m3u8-refresh
+# 或：uv run m3u8-refresh --check-interval 300 --min-minutes 10 --batch-size 30
+```
+
+每轮会选择 `status != 1`、`url` 非空、且 `m3u8_update_time` 为空或超过最小更新时间的记录。解析到的相对 M3U8 地址会自动转换为绝对 URL；成功后更新 `m3u8_address` 和 `m3u8_update_time`。使用 Ctrl+C 可优雅退出。
+
+### 8. 批量导入影片页面 URL
+
+准备 UTF-8 文本文件，每行一条 `NUMBER URL` 记录；空行和 `#` 开头的注释会被忽略：
+
+```text
+SNOS-234 https://jable.tv/videos/snos-234/
+MIDA-649 https://jable.tv/videos/mida-649/
+```
+
+先校验输入，不写入数据库：
+
+```bash
+uv run python scripts/import_movie_urls.py urls.txt --dry-run
+```
+
+确认后导入：
+
+```bash
+uv run python scripts/import_movie_urls.py urls.txt
+```
+
+新记录的 `status` 为 `0`，M3U8 地址和更新时间为空；数据库中已有相同 `number` 的记录会跳过且不覆盖。
+
 ## 项目结构
 
 ```
@@ -212,6 +262,7 @@ m3u8_spider/
 ├── cli/                     # 命令行入口
 │   ├── main.py              # 单次下载入口（python -m cli.main / m3u8-download）
 │   ├── daemon.py            # 自动下载守护进程（python -m cli.daemon / m3u8-daemon）
+│   ├── m3u8_refresh_daemon.py # M3U8 地址刷新（python -m cli.m3u8_refresh_daemon / m3u8-refresh）
 │   ├── batch_merge.py       # 批量合并（python -m cli.batch_merge / m3u8-batch-merge）
 │   └── sync_mp4.sh          # MP4 同步到远程（rsync）
 ├── m3u8_spider/             # 核心包
@@ -219,12 +270,14 @@ m3u8_spider/
 │   ├── logger.py            # 日志
 │   ├── core/                # 核心逻辑
 │   │   ├── downloader.py    # Scrapy 调用（DownloadConfig, run_scrapy）
+│   │   ├── m3u8_fetcher.py  # 页面抓取与 M3U8 地址解析
 │   │   ├── recovery.py      # 恢复流程（补齐元数据 + 重试失败 TS）
 │   │   └── validator.py     # 校验（validate_downloads）
 │   ├── utils/               # 工具
 │   │   └── merger.py        # FFmpeg 合并（merge_ts_files）
 │   ├── automation/          # 自动下载
-│   │   └── auto_downloader.py
+│   │   ├── auto_downloader.py
+│   │   └── m3u8_refresher.py # M3U8 地址刷新守护进程
 │   └── database/            # 数据库
 │       └── manager.py       # MySQL 连接与任务查询
 ├── scrapy_project/          # Scrapy 项目目录
