@@ -66,3 +66,7 @@ def main() -> None:
     finally:
         manager.close()
     print(f"完成：新增 {inserted} 条，跳过 {skipped} 条已有编号")
+
+
+if __name__ == "__main__":
+    main()
