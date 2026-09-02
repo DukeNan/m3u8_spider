@@ -1,0 +1,42 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "m3u8-spider 运行时架构",
+    "locale": "zh-CN",
+    "output": "m3u8-spider-runtime-architecture.html",
+    "quality_profile": "showcase"
+  },
+  "components": [
+    { "id": "operator", "type": "external", "label": "操作者", "sublabel": "终端 / 自动化任务", "pos": [40, 300], "size": [130, 64] },
+    { "id": "fetch_cli", "type": "backend", "label": "m3u8-fetch CLI", "sublabel": "页面 URL → M3U8 URL", "pos": [230, 140], "size": [170, 64] },
+    { "id": "page_fetcher", "type": "backend", "label": "页面抓取", "sublabel": "crawl4ai + Playwright", "pos": [470, 140], "size": [170, 64] },
+    { "id": "video_page", "type": "external", "label": "视频详情页", "sublabel": "目标站点 HTML", "pos": [710, 140], "size": [150, 64] },
+    { "id": "m3u8_parser", "type": "backend", "label": "M3U8 解析", "sublabel": "正则提取并解析相对 URL", "pos": [470, 300], "size": [170, 64] },
+    { "id": "playlist_cdn", "type": "external", "label": "M3U8 / 分片服务", "sublabel": "播放列表、密钥与 TS 分片", "pos": [710, 390], "size": [180, 64] },
+    { "id": "download_cli", "type": "backend", "label": "m3u8-download CLI", "sublabel": "M3U8 URL → 下载配置", "pos": [230, 390], "size": [170, 64] },
+    { "id": "recovery", "type": "backend", "label": "下载、校验与恢复", "sublabel": "补元数据，最多 3 轮重试", "pos": [470, 470], "size": [180, 64] },
+    { "id": "scrapy", "type": "backend", "label": "Scrapy", "sublabel": "m3u8_downloader + Pipeline", "pos": [710, 520], "size": [180, 64] },
+    { "id": "media_output", "type": "cloud", "label": "本地媒体输出", "sublabel": "movies/、mp4/、logs/", "pos": [970, 470], "size": [160, 64] },
+    { "id": "automation", "type": "backend", "label": "自动化守护进程", "sublabel": "下载调度与 URL 刷新", "pos": [40, 550], "size": [170, 64] },
+    { "id": "database", "type": "database", "label": "MySQL", "sublabel": "任务、页面 URL 与状态", "pos": [230, 590], "size": [170, 64] }
+  ],
+  "connections": [
+    { "id": "operator-fetch-cli", "from": "operator", "to": "fetch_cli", "label": "详情页 URL", "variant": "emphasis" },
+    { "id": "fetch-cli-page-fetcher", "from": "fetch_cli", "to": "page_fetcher", "label": "抓取请求", "variant": "emphasis" },
+    { "id": "page-fetcher-page", "from": "page_fetcher", "to": "video_page", "label": "无头浏览器访问", "variant": "emphasis", "labelAt": [675, 218] },
+    { "id": "page-fetcher-parser", "from": "page_fetcher", "to": "m3u8_parser", "label": "HTML", "fromSide": "bottom", "toSide": "top", "labelAt": [555, 218] },
+    { "id": "parser-fetch-cli", "from": "m3u8_parser", "to": "fetch_cli", "label": "M3U8 URL（stdout）", "fromSide": "left", "toSide": "bottom" },
+    { "id": "operator-download-cli", "from": "operator", "to": "download_cli", "label": "M3U8 URL 与文件名", "variant": "emphasis", "labelAt": [200, 378] },
+    { "id": "download-cli-recovery", "from": "download_cli", "to": "recovery", "label": "DownloadConfig", "variant": "emphasis", "labelAt": [435, 468] },
+    { "id": "recovery-scrapy", "from": "recovery", "to": "scrapy", "label": "subprocess: scrapy crawl", "variant": "emphasis", "labelAt": [680, 598] },
+    { "id": "scrapy-playlist", "from": "scrapy", "to": "playlist_cdn", "label": "请求播放列表、密钥与分片", "variant": "emphasis" },
+    { "id": "scrapy-output", "from": "scrapy", "to": "media_output", "label": "写入 TS 与元数据", "variant": "emphasis", "labelAt": [930, 598] },
+    { "id": "automation-database", "from": "automation", "to": "database", "label": "读取任务、更新状态与 URL", "labelAt": [220, 668] }
+  ],
+  "cards": [
+    { "dot": "cyan", "title": "手动提取", "items": ["m3u8-fetch 将详情页 HTML 交给解析器", "解析出的 M3U8 URL 仅输出到 stdout"] },
+    { "dot": "emerald", "title": "下载与恢复", "items": ["下载入口先补齐元数据并校验完整性", "Scrapy 负责播放列表、密钥与 TS 分片请求"] },
+    { "dot": "violet", "title": "自动化", "items": ["守护进程从 MySQL 获取待处理任务", "刷新器写回 M3U8 地址，下载器写回任务状态"] }
+  ]
+}
