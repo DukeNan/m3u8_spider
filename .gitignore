@@ -190,3 +190,6 @@ playlist.txt
 
 # CodeGraph index
 .codegraph/
+
+# 智普 ZCode
+.zcode/
