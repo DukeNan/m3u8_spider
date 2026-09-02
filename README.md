@@ -13,6 +13,7 @@
 - **批量合并**：`cli/batch_merge.py`（或 `m3u8-batch-merge`）遍历 `movies/` 校验、合并、可选删除源目录
 - **远程同步**：`cli/sync_mp4.sh` 使用 rsync 将 MP4 同步到远程 Jellyfin 媒体目录
 - **MySQL 数据库集成**：支持从数据库自动读取任务、批量下载、状态管理
+- **M3U8 地址提取**：`m3u8-fetch` 访问影片详情页解析 M3U8 地址，不依赖数据库
 
 ## 环境要求
 
@@ -199,12 +200,6 @@ m3u8-daemon --concurrent 64 --delay 0.5 --check-interval 30 --cooldown 30
 | 1 | 下载成功 | 下载完整且校验通过 |
 | 2 | 下载失败 | 下载失败或校验不通过 |
 
-#### 详细文档
-
-- **[QUICKSTART.md](QUICKSTART.md)**: 5分钟快速入门指南
-- **[AUTO_DOWNLOAD_README.md](AUTO_DOWNLOAD_README.md)**: 完整使用手册（500+ 行）
-- **[TESTING.md](TESTING.md)**: 详细测试步骤（400+ 行）
-
 ### 7. 刷新 M3U8 地址（可选）
 
 当数据库中的 M3U8 地址会过期时，可由守护进程从影片详情页的 `url` 字段重新解析并写回 `m3u8_address`。
@@ -255,6 +250,36 @@ uv run python scripts/import_movie_urls.py urls.txt
 
 新记录的 `status` 为 `0`，M3U8 地址和更新时间为空；数据库中已有相同 `number` 的记录会跳过且不覆盖。
 
+### 9. 提取 M3U8 地址（可选）
+
+从影片详情页直接解析出 M3U8 地址，独立运行、不读写数据库，适合配合 `m3u8-import` 等工具使用。
+
+1. 安装可选依赖并安装浏览器（与刷新守护进程相同）：
+
+```bash
+uv pip install -e ".[crawl]"
+uv run playwright install chromium
+```
+
+2. 使用示例：
+
+```bash
+# 单个详情页，解析结果直接输出到 stdout
+m3u8-fetch https://example.com/videos/xxx/
+
+# 单个详情页，并把解析结果写入文件
+m3u8-fetch https://example.com/videos/xxx/ --output found.txt
+
+# 批量模式：文件中每行一个详情页 URL
+m3u8-fetch --file urls.txt --output found.txt
+```
+
+说明：
+- stdout 只输出纯 M3U8 URL，可直接通过管道交给其他命令；进度与统计信息走 stderr
+- 批量文件为 UTF-8 文本，每行一个页面 URL，空行和 `#` 开头的注释行会被跳过
+- `--output` 只写入解析成功的 URL（覆盖写）
+- 若一条都没有解析到，命令以退出码 1 结束
+
 ## 项目结构
 
 ```
@@ -263,6 +288,7 @@ m3u8_spider/
 │   ├── main.py              # 单次下载入口（python -m cli.main / m3u8-download）
 │   ├── daemon.py            # 自动下载守护进程（python -m cli.daemon / m3u8-daemon）
 │   ├── m3u8_refresh_daemon.py # M3U8 地址刷新（python -m cli.m3u8_refresh_daemon / m3u8-refresh）
+│   ├── m3u8_fetch.py        # 详情页 M3U8 地址提取（python -m cli.m3u8_fetch / m3u8-fetch）
 │   ├── batch_merge.py       # 批量合并（python -m cli.batch_merge / m3u8-batch-merge）
 │   └── sync_mp4.sh          # MP4 同步到远程（rsync）
 ├── m3u8_spider/             # 核心包
@@ -291,10 +317,7 @@ m3u8_spider/
 ├── env.example              # .env 模板
 ├── pyproject.toml           # 项目配置与依赖、入口点
 ├── README.md
-├── CLAUDE.md
-├── QUICKSTART.md
-├── AUTO_DOWNLOAD_README.md
-└── TESTING.md
+└── CLAUDE.md
 ```
 
 ## 目录结构
@@ -398,8 +421,6 @@ m3u8_spider/
 - 检查 `m3u8_address` 字段不为空
 - 查看守护进程日志输出
 - 验证数据库表结构是否正确
-
-## 相关文档
 
 ## 许可证
 

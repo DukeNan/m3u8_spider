@@ -59,6 +59,9 @@ m3u8-daemon [--concurrent 32] [--delay 0] [--check-interval 60] [--cooldown 300]
 
 # M3U8 URL 刷新守护进程（检测旧视频是否有新地址）
 m3u8-refresh
+
+# 从详情页提取 M3U8 地址（不依赖数据库，stdout 输出纯 URL）
+m3u8-fetch <page_url> [--file urls.txt] [--output found.txt]
 ```
 
 ## 代码风格
@@ -86,6 +89,7 @@ Spider 通过 `metadata_only` 和 `retry_urls` 两个互斥参数切换模式：
 |------|------|
 | `cli/main.py` | 单次下载入口 |
 | `cli/daemon.py` | 守护进程入口 |
+| `cli/m3u8_fetch.py` | 详情页 M3U8 地址提取入口（不依赖数据库） |
 | `m3u8_spider/core/downloader.py` | `DownloadConfig` + `run_scrapy()`（通过 subprocess 调用 Scrapy） |
 | `m3u8_spider/core/recovery.py` | 恢复流程协调器 |
 | `m3u8_spider/core/m3u8_fetcher.py` | M3U8 文件获取与解析 |
@@ -104,7 +108,7 @@ Spider 通过 `metadata_only` 和 `retry_urls` 两个互斥参数切换模式：
 
 ## 测试
 
-项目目前无测试套件。
+使用 pytest：`make test` 运行全部测试，`make test-cov` 带覆盖率输出。测试位于 `tests/`，按源码目录镜像组织（`tests/core/`、`tests/scrapy/`、`tests/cli/` 等）；网络、爬虫与数据库边界均已 mock，可离线运行。
 
 ## MySQL 集成
 

@@ -10,6 +10,7 @@ import logging
 import os
 import sys
 from pathlib import Path
+from typing import TextIO
 
 from m3u8_spider.config import (
     DEFAULT_LOG_LEVEL,
@@ -28,6 +29,7 @@ def setup_logger(
     log_level: str | None = None,
     log_file: str | Path | None = None,
     console: bool = True,
+    stream: TextIO | None = None,
 ) -> logging.Logger:
     """
     设置并返回配置好的 logger
@@ -37,6 +39,7 @@ def setup_logger(
         log_level: 日志级别（DEBUG, INFO, WARNING, ERROR, CRITICAL），None 时从环境变量读取或使用默认值
         log_file: 日志文件路径，None 时不输出到文件
         console: 是否输出到控制台，默认 True
+        stream: 控制台输出流，默认 sys.stdout；可传 sys.stderr 以保持 stdout 纯净（便于管道）
 
     Returns:
         配置好的 Logger 实例
@@ -68,7 +71,7 @@ def setup_logger(
 
     # 添加控制台 handler
     if console:
-        console_handler = logging.StreamHandler(sys.stdout)
+        console_handler = logging.StreamHandler(stream if stream is not None else sys.stdout)
         console_handler.setLevel(level)
         console_handler.setFormatter(formatter)
         logger.addHandler(console_handler)

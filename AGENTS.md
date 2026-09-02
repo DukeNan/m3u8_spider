@@ -22,9 +22,10 @@ make format                            # format with Ruff
 uv run m3u8-download <url> <name>      # download one playlist
 uv run m3u8-daemon                     # run the MySQL download daemon
 uv run m3u8-refresh                    # refresh M3U8 URLs from page URLs
+uv run m3u8-fetch <page_url>           # extract the M3U8 URL from a video page
 ```
 
-Install the optional page crawler before using refresh: `uv pip install -e ".[crawl]"`; Playwright browser setup may also be required by crawl4ai.
+Install the optional page crawler before using refresh or fetch: `uv pip install -e ".[crawl]"`; Playwright browser setup may also be required by crawl4ai.
 
 ## Coding Style & Naming Conventions
 

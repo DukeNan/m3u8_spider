@@ -23,13 +23,14 @@ dependencies = [
 [project.optional-dependencies]
 dev = ["ruff>=0.15.0", "pytest>=8.0", "pytest-mock>=3.14"]
 postgres = ["psycopg2-binary>=2.9.0"]
-crawl = ["crawl4ai>=0.4.0"]
+crawl = ["crawl4ai>=0.4.0", "chardet>=3.0.2,<6"]
 
 [project.scripts]
 m3u8-download = "cli.main:main"
 m3u8-daemon = "cli.daemon:main"
 m3u8-batch-merge = "cli.batch_merge:main"
 m3u8-refresh = "cli.m3u8_refresh_daemon:main"
+m3u8-fetch = "cli.m3u8_fetch:main"
 m3u8-import = "m3u8_spider.utils.movie_url_import:main"
 
 [dependency-groups]
