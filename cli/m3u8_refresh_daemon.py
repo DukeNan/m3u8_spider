@@ -66,11 +66,11 @@ def parse_args() -> argparse.Namespace:
 
 
 def main() -> None:
+    args = parse_args()
+
     logger.info("=" * 60)
     logger.info("🔄 M3U8 URL 刷新守护进程")
     logger.info("=" * 60)
-
-    args = parse_args()
 
     try:
         config = load_refresh_config()

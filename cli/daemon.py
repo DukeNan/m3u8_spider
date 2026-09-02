@@ -91,13 +91,13 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> None:
     """主入口"""
+    # 解析命令行参数（--help 时输出保持干净，不打印欢迎信息）
+    args = parse_args()
+
     # 打印欢迎信息
     logger.info("=" * 60)
     logger.info("🎬 M3U8 自动下载守护进程")
     logger.info("=" * 60)
-
-    # 解析命令行参数
-    args = parse_args()
 
     # 加载配置（.env 由 config 模块统一加载）
     try:
